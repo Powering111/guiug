@@ -1,0 +1,12 @@
+[package]
+name = "guiug"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wgpu = { version = "28.0.0", default-features = false, features = ["vulkan", "wgsl"] }
+bytemuck = { version = "1.25.0", features = ["derive"] }
+glam = { version = "0.31.0", features = ["bytemuck"] }
+image = { version = "0.25.9", default-features = false, features = ["png"] }
+pollster = "0.4.0"
+winit = {version = "0.30.12", default-features = false, features = ["rwh_06"]}
