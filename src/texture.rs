@@ -101,7 +101,7 @@ impl Texture {
         };
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("icon texture"),
+            label: None,
             size,
             mip_level_count: 1,
             sample_count: 1,

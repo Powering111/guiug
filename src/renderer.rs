@@ -1,4 +1,4 @@
-use glam::f32::{Vec2, Vec3, Vec4};
+use glam::{UVec2, UVec3, Vec2, Vec3, Vec4};
 use wgpu::util::DeviceExt;
 
 #[repr(C, packed)]
@@ -21,12 +21,6 @@ impl Vertex {
     }
 }
 
-trait Instance {
-    type Raw: bytemuck::Pod;
-    fn desc() -> wgpu::VertexBufferLayout<'static>;
-    fn raw(&self) -> Self::Raw;
-}
-
 // Flat Renderer
 pub struct FlatRenderer {
     render_pipeline: wgpu::RenderPipeline,
@@ -35,13 +29,17 @@ pub struct FlatRenderer {
 }
 
 impl FlatRenderer {
-    pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        surface_format: wgpu::TextureFormat,
+        screen_bind_group_layout: &wgpu::BindGroupLayout,
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader/flat.wgsl"));
         let render_pipeline = create_render_pipeline(
             device,
             &shader,
             &[Vertex::desc(), FlatInstance::desc()],
-            &[],
+            &[screen_bind_group_layout],
             surface_format,
         );
 
@@ -67,6 +65,10 @@ impl FlatRenderer {
         queue: &wgpu::Queue,
         instances: Vec<FlatInstance>,
     ) {
+        if instances.is_empty() {
+            return;
+        }
+
         queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
 
         render_pass.set_pipeline(&self.render_pipeline);
@@ -79,28 +81,23 @@ impl FlatRenderer {
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct FlatInstance {
-    pub position: Vec3,
-    pub scale: Vec3,
+    pub position: UVec3,
+    pub scale: UVec2,
     pub color: Vec4,
 }
 
 impl FlatInstance {
     const ATTRIBS: [wgpu::VertexAttribute; 3] =
-        wgpu::vertex_attr_array![2 => Float32x3, 3 => Float32x3, 4 => Float32x4];
+        wgpu::vertex_attr_array![2 => Uint32x3, 3 => Uint32x2, 4 => Float32x4];
 }
 
-impl Instance for FlatInstance {
-    type Raw = FlatInstance;
+impl FlatInstance {
     fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Self::Raw>() as wgpu::BufferAddress,
+            array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &Self::ATTRIBS,
         }
-    }
-
-    fn raw(&self) -> Self::Raw {
-        *self
     }
 }
 
@@ -116,14 +113,15 @@ impl TextureRenderer {
     pub fn new(
         device: &wgpu::Device,
         surface_format: wgpu::TextureFormat,
+        screen_bind_group_layout: &wgpu::BindGroupLayout,
         texture_bind_group_layout: &wgpu::BindGroupLayout,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader/texture.wgsl"));
         let render_pipeline = create_render_pipeline(
             device,
             &shader,
-            &[Vertex::desc(), TextureInstance::desc()],
-            &[texture_bind_group_layout],
+            &[Vertex::desc(), TextureInstanceRaw::desc()],
+            &[screen_bind_group_layout, texture_bind_group_layout],
             surface_format,
         );
 
@@ -172,7 +170,7 @@ impl TextureRenderer {
         for (num, instance) in instances.iter().enumerate() {
             if last_texture_id != instance.texture_id {
                 if let Some(texture) = texture_manager.get_texture(last_texture_id) {
-                    render_pass.set_bind_group(0, &texture.bind_group, &[]);
+                    render_pass.set_bind_group(1, &texture.bind_group, &[]);
                     render_pass.draw_indexed(
                         0..self.vbuf.index_count,
                         0,
@@ -185,7 +183,7 @@ impl TextureRenderer {
             }
         }
         if let Some(texture) = texture_manager.get_texture(last_texture_id) {
-            render_pass.set_bind_group(0, &texture.bind_group, &[]);
+            render_pass.set_bind_group(1, &texture.bind_group, &[]);
             render_pass.draw_indexed(
                 0..self.vbuf.index_count,
                 0,
@@ -197,26 +195,13 @@ impl TextureRenderer {
 
 #[derive(Clone, Debug)]
 pub(crate) struct TextureInstance {
-    pub position: Vec3,
-    pub scale: Vec3,
+    pub position: UVec3,
+    pub scale: UVec2,
     pub texture_id: crate::texture::TextureId,
 }
+
 impl TextureInstance {
-    const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![2 => Float32x3, 3 => Float32x3];
-}
-
-impl Instance for TextureInstance {
-    type Raw = TextureInstanceRaw;
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Self::Raw>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &Self::ATTRIBS,
-        }
-    }
-
-    fn raw(&self) -> Self::Raw {
+    fn raw(&self) -> TextureInstanceRaw {
         TextureInstanceRaw {
             position: self.position,
             scale: self.scale,
@@ -227,25 +212,38 @@ impl Instance for TextureInstance {
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct TextureInstanceRaw {
-    position: Vec3,
-    scale: Vec3,
+    position: UVec3,
+    scale: UVec2,
+}
+
+impl TextureInstanceRaw {
+    const ATTRIBS: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![2 => Uint32x3, 3 => Uint32x2];
+
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &Self::ATTRIBS,
+        }
+    }
 }
 
 const RECT_VERTICES: &[Vertex] = &[
     Vertex {
-        position: Vec3::new(0.5, 0.5, 0.0),
+        position: Vec3::new(1.0, 1.0, 0.0),
         uv: Vec2::new(1.0, 0.0),
     },
     Vertex {
-        position: Vec3::new(-0.5, 0.5, 0.0),
+        position: Vec3::new(0.0, 1.0, 0.0),
         uv: Vec2::new(0.0, 0.0),
     },
     Vertex {
-        position: Vec3::new(-0.5, -0.5, 0.0),
+        position: Vec3::new(0.0, 0.0, 0.0),
         uv: Vec2::new(0.0, 1.0),
     },
     Vertex {
-        position: Vec3::new(0.5, -0.5, 0.0),
+        position: Vec3::new(1.0, 0.0, 0.0),
         uv: Vec2::new(1.0, 1.0),
     },
 ];
