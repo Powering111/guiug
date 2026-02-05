@@ -22,15 +22,6 @@ impl Node {
         }
     }
 
-    // create new triangle node
-    pub fn triangle(position: Vec3, size: Vec3, color: Vec4) -> Self {
-        Self {
-            display: Display::Triangle(color),
-            position,
-            size,
-        }
-    }
-
     // create new texture node
     pub fn texture(position: Vec3, size: Vec3, texture: texture::TextureId) -> Self {
         Self {
@@ -43,6 +34,5 @@ impl Node {
 
 pub enum Display {
     Rectangle(Vec4),
-    Triangle(Vec4),
     Texture(texture::TextureId),
 }

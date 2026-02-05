@@ -4,8 +4,28 @@ use image::GenericImageView;
 
 pub type TextureId = u16;
 
+#[derive(Default)]
+pub(crate) struct TextureInfoManager<'a> {
+    last_id: TextureId,
+    texture_infos: HashMap<TextureId, TextureInfo<'a>>,
+}
+
+impl<'a> TextureInfoManager<'a> {
+    pub fn add_texture_info(&mut self, data: &'a [u8]) -> TextureId {
+        let id = self.last_id;
+        let texture_info = TextureInfo { data };
+        self.last_id += 1;
+        self.texture_infos.entry(id).insert_entry(texture_info);
+
+        id
+    }
+}
+
+pub(crate) struct TextureInfo<'a> {
+    data: &'a [u8],
+}
+
 pub(crate) struct TextureManager {
-    pub last_id: TextureId,
     pub textures: HashMap<TextureId, Texture>,
     pub bind_group_layout: wgpu::BindGroupLayout,
 }
@@ -35,25 +55,22 @@ impl TextureManager {
         });
 
         Self {
-            last_id: 0,
             textures: HashMap::new(),
             bind_group_layout,
         }
     }
-    // pub fn load_texture<T>(path: T) where T: Into<std::path::Path> {
 
-    // }
-    pub fn load_texture_from_bytes(
+    pub fn load(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        bytes: &[u8],
-    ) -> TextureId {
-        let texture = Texture::from_bytes(device, queue, bytes, &self.bind_group_layout);
-        let id = self.last_id;
-        self.last_id += 1;
-        self.textures.entry(id).insert_entry(texture);
-        id
+        texture_infos: &TextureInfoManager,
+    ) {
+        for (texture_id, texture_info) in &texture_infos.texture_infos {
+            let texture =
+                Texture::from_bytes(device, queue, texture_info.data, &self.bind_group_layout);
+            self.textures.entry(*texture_id).insert_entry(texture);
+        }
     }
 
     pub fn get_texture(&self, id: TextureId) -> Option<&Texture> {
@@ -142,7 +159,7 @@ impl Texture {
     }
 }
 
-pub fn create_depth_texture(
+pub(crate) fn create_depth_texture(
     device: &wgpu::Device,
     configuration: &wgpu::SurfaceConfiguration,
 ) -> wgpu::TextureView {
