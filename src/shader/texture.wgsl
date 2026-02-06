@@ -1,9 +1,8 @@
-
 struct VertexInput {
-    @location(0) position: vec3f,
+    @location(0) position: vec2f,
     @location(1) uv: vec2f,
-    @location(2) instance_position: vec3u,
-    @location(3) instance_scale: vec2u,
+    @location(2) instance_position: vec3i,
+    @location(3) instance_scale: vec2i,
 }
 
 struct VertexOutput {
@@ -19,10 +18,12 @@ fn vs_main(
     in: VertexInput,
 ) -> VertexOutput {
     var out: VertexOutput;
-    let position_pixel = in.position * vec3f(vec2f(in.instance_scale), 1.0) + vec3f(in.instance_position);
+    let position_pixel = in.position * vec2f(in.instance_scale) + vec2f(f32(in.instance_position.x), f32(i32(screen_size.y) - in.instance_position.y));
 
     let screen_size_f = vec2f(screen_size);
-    let position_ndc = vec4f(2.0 * (position_pixel.xy / screen_size_f) - 1.0, position_pixel.z / 10000.0, 1.0);
+
+    let position_normalized = position_pixel / screen_size_f;
+    let position_ndc = vec4f(2.0 * vec2f(position_normalized) - 1.0, f32(in.instance_position.z) / 10000.0, 1.0);
 
     out.clip_position = position_ndc;
     out.uv = in.uv;

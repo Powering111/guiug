@@ -1,59 +1,64 @@
-use guiug::{Guiug, Position, UVec2, Vec4};
-use rand::Rng;
+use guiug::{Anchor, Guiug, Position, Size, Vec4};
 
 fn main() {
-    let mut rng = rand::rng();
     let mut guiug = Guiug::default();
 
     // texture info
-    let icon_texture = guiug.add_texture(include_bytes!("res/awesomeface_3d.png"));
+    let awesomeface_texture = guiug.add_texture(include_bytes!("res/awesomeface_3d.png"));
     let ldmsys_texture = guiug.add_texture(include_bytes!("res/ldmsys.png"));
+    let demisoda_texture = guiug.add_texture(include_bytes!("res/demisoda.jpg"));
+    let library_texture = guiug.add_texture(include_bytes!("res/kaist_library.jpg"));
     let gamma_texture = guiug.add_texture(include_bytes!("res/gamma-ramp32.png"));
 
     // construct scene
-    let mut root = Vec::new();
-
-    let awesomeface_node = guiug.texture_node(icon_texture);
-    root.push((
-        Position::Absolute {
-            position: UVec2::new(300, 100),
-            size: UVec2::new(300, 300),
-        },
-        awesomeface_node,
-    ));
-    let ldmsys_node = guiug.texture_node(ldmsys_texture);
-    root.push((
-        Position::Absolute {
-            position: UVec2::new(600, 200),
-            size: UVec2::new(400, 400),
-        },
-        ldmsys_node,
-    ));
-    let gamma_node = guiug.texture_node(gamma_texture);
-    root.push((
-        Position::Absolute {
-            position: UVec2::new(100, 700),
-            size: UVec2::new(800, 200),
-        },
-        gamma_node,
-    ));
+    let mut root = vec![
+        (
+            Position::new(
+                Anchor::start(Size::Ratio(0.2), Size::Pixel(200)),
+                Anchor::end(Size::Ratio(0.4), Size::Pixel(200)),
+            ),
+            guiug.texture_node(awesomeface_texture),
+        ),
+        (
+            Position::new(
+                Anchor::end(Size::Ratio(0.2), Size::Pixel(200)),
+                Anchor::end(Size::Ratio(0.4), Size::Pixel(200)),
+            ),
+            guiug.texture_node(ldmsys_texture),
+        ),
+        (
+            Position::new(
+                Anchor::start(Size::Ratio(0.2), Size::Pixel(200)),
+                Anchor::end(Size::Ratio(0.1), Size::Pixel(200)),
+            ),
+            guiug.texture_node(demisoda_texture),
+        ),
+        (
+            Position::new(
+                Anchor::end(Size::Ratio(0.2), Size::Pixel(200)),
+                Anchor::end(Size::Ratio(0.1), Size::Pixel(200)),
+            ),
+            guiug.texture_node(library_texture),
+        ),
+        (
+            Position::new(
+                Anchor::stretch(Size::Pixel(100), Size::Pixel(100)),
+                Anchor::start(Size::Ratio(0.1), Size::Ratio(0.2)),
+            ),
+            guiug.texture_node(gamma_texture),
+        ),
+    ];
 
     for i in 0..10 {
         for j in 0..10 {
-            let position = UVec2::new(100 * i + 20, 100 * j + 20);
-            let size = UVec2::new(60, 60);
-            let color = [
-                Vec4::new(1.0, 1.0, 1.0, 1.0),
-                Vec4::new(1.0, 0.0, 0.0, 1.0),
-                Vec4::new(0.0, 1.0, 0.0, 1.0),
-                Vec4::new(0.0, 0.0, 1.0, 1.0),
-                Vec4::new(0.0, 1.0, 1.0, 1.0),
-                Vec4::new(1.0, 0.0, 1.0, 1.0),
-                Vec4::new(1.0, 1.0, 0.0, 1.0),
-            ][rng.random_range(0..7) as usize];
-
-            let node = guiug.rect_node(color);
-            root.push((Position::Absolute { position, size }, node));
+            let color = Vec4::new(0.1 * i as f32, 0.1 * j as f32, 0.0, 1.0);
+            root.push((
+                Position::new(
+                    Anchor::start(Size::Ratio(0.1 * i as f32 + 0.02), Size::Ratio(0.06)),
+                    Anchor::start(Size::Ratio(0.1 * j as f32 + 0.02), Size::Ratio(0.06)),
+                ),
+                guiug.rect_node(color),
+            ));
         }
     }
 

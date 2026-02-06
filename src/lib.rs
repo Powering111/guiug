@@ -1,12 +1,27 @@
+//! Declarative GUI library in Rust.
+//! Create [Guiug] object and call [run] with it.
+
 mod renderer;
 mod scene;
 mod texture;
+mod types;
 
-pub use glam::{UVec2, UVec3, Vec2, Vec3, Vec4};
-pub use scene::{Node, NodeId, Position, Scene};
+pub use glam::Vec4;
+use glam::{IVec2, IVec3, UVec2};
+pub use scene::{Anchor, Node, NodeId, Position, Scene, Size};
 use std::sync::Arc;
+use types::Rect;
 use wgpu::{BindGroupDescriptor, BindGroupLayoutDescriptor, util::DeviceExt};
 
+/// Interface for guiug application.
+///
+/// # Example
+/// ```
+/// let mut guiug = guiug::Guiug::default();
+/// let root_node = guiug.layer_node(vec![]);
+/// guiug.set_root(root_node);
+/// guiug::run("awesome application", guiug);
+/// ```
 #[derive(Default)]
 pub struct Guiug<'a> {
     scene: Scene,
@@ -14,26 +29,38 @@ pub struct Guiug<'a> {
 }
 
 impl<'a> Guiug<'a> {
-    // Add texture to be loaded and used later. You can use the returned TextureId.
+    /// Add texture to be loaded and used later. You can use the returned TextureId to construct texture node.
     pub fn add_texture(&mut self, texture_data: &'a [u8]) -> texture::TextureId {
         self.texture_info_manager.add_texture_info(texture_data)
     }
-}
 
-impl core::ops::Deref for Guiug<'_> {
-    type Target = scene::Scene;
+    /// Set scene root. You have to set root in order to render anything on the screen. Root node will have same size as the screen.
+    pub fn set_root(&mut self, root_node: NodeId) {
+        self.scene.set_root(root_node)
+    }
 
-    fn deref(&self) -> &Self::Target {
-        &self.scene
+    /// Create Layer node.
+    /// First one will be visible when overlapped.
+    pub fn layer_node(&mut self, inner: Vec<(Position, NodeId)>) -> NodeId {
+        self.scene.layer_node(inner)
+    }
+
+    /// Create Rect node. It renders as solid rectangle. Color is RGBA0~1 Vec4.
+    pub fn rect_node(&mut self, color: Vec4) -> NodeId {
+        self.scene.rect_node(color)
+    }
+
+    /// Create texture node. It renders as rectangular image.
+    /// To create texture, use [Self::add_texture]
+    pub fn texture_node(&mut self, texture_id: texture::TextureId) -> NodeId {
+        self.scene.texture_node(texture_id)
     }
 }
 
-impl core::ops::DerefMut for Guiug<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.scene
-    }
-}
-
+/// Run the given guiug application.
+/// This function will not return until the window closes.
+/// * `title` - window title
+/// * `guiug` - guiug application to run
 pub fn run(title: &str, guiug: Guiug) {
     let event_loop = winit::event_loop::EventLoop::new().unwrap();
     let mut app = Handler {
@@ -270,17 +297,10 @@ impl<'a> State<'a> {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-struct Rect {
-    pub x: u32,
-    pub y: u32,
-    pub w: u32,
-    pub h: u32,
-}
 pub(crate) struct NodeVisitor {
     rect_instances: Vec<renderer::FlatInstance>,
     texture_instances: Vec<renderer::TextureInstance>,
-    z_index: u32,
+    z_index: i32,
 }
 
 impl NodeVisitor {
@@ -294,8 +314,8 @@ impl NodeVisitor {
             let rect = Rect {
                 x: 0,
                 y: 0,
-                w: screen_width,
-                h: screen_height,
+                w: screen_width as i32,
+                h: screen_height as i32,
             };
 
             visitor.do_visit(scene, root_node, rect);
@@ -308,28 +328,20 @@ impl NodeVisitor {
             match node {
                 Node::Layer { inner } => {
                     for (position, child_node_id) in inner {
-                        let child_rect = match position {
-                            Position::Full => rect,
-                            Position::Absolute { position, size } => Rect {
-                                x: position.x,
-                                y: position.y,
-                                w: size.x,
-                                h: size.y,
-                            },
-                        };
+                        let child_rect = position.resolve(rect);
                         self.do_visit(scene, *child_node_id, child_rect);
                         self.z_index += 1;
                     }
                 }
                 Node::Rect { color } => self.rect_instances.push(renderer::FlatInstance {
-                    position: UVec3::new(rect.x, rect.y, self.z_index),
-                    scale: UVec2::new(rect.w, rect.h),
+                    position: IVec3::new(rect.x, rect.y, self.z_index),
+                    scale: IVec2::new(rect.w, rect.h),
                     color: *color,
                 }),
                 Node::Texture { texture_id } => {
                     self.texture_instances.push(renderer::TextureInstance {
-                        position: UVec3::new(rect.x, rect.y, self.z_index),
-                        scale: UVec2::new(rect.w, rect.h),
+                        position: IVec3::new(rect.x, rect.y, self.z_index),
+                        scale: IVec2::new(rect.w, rect.h),
                         texture_id: *texture_id,
                     })
                 }
@@ -350,13 +362,17 @@ impl<'a> winit::application::ApplicationHandler for Handler<'a> {
             .create_window(
                 winit::window::Window::default_attributes()
                     .with_inner_size(winit::dpi::PhysicalSize::new(1000, 1000))
-                    .with_title(self.title),
+                    .with_title(self.title)
+                    .with_visible(false),
             )
             .unwrap();
+        let window = Arc::new(window);
         self.state = Some(pollster::block_on(State::new(
-            Arc::new(window),
+            window.clone(),
             self.guiug.take().unwrap(),
         )));
+
+        window.set_visible(true);
     }
 
     fn window_event(

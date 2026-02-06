@@ -1,16 +1,16 @@
-use glam::{UVec2, UVec3, Vec2, Vec3, Vec4};
+use glam::{IVec2, IVec3, Vec2, Vec4};
 use wgpu::util::DeviceExt;
 
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
-    position: Vec3,
+    position: Vec2,
     uv: Vec2,
 }
 
 impl Vertex {
     const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2];
+        wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2];
 
     fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -81,14 +81,14 @@ impl FlatRenderer {
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct FlatInstance {
-    pub position: UVec3,
-    pub scale: UVec2,
+    pub position: IVec3,
+    pub scale: IVec2,
     pub color: Vec4,
 }
 
 impl FlatInstance {
     const ATTRIBS: [wgpu::VertexAttribute; 3] =
-        wgpu::vertex_attr_array![2 => Uint32x3, 3 => Uint32x2, 4 => Float32x4];
+        wgpu::vertex_attr_array![2 => Sint32x3, 3 => Sint32x2, 4 => Float32x4];
 }
 
 impl FlatInstance {
@@ -195,8 +195,8 @@ impl TextureRenderer {
 
 #[derive(Clone, Debug)]
 pub(crate) struct TextureInstance {
-    pub position: UVec3,
-    pub scale: UVec2,
+    pub position: IVec3,
+    pub scale: IVec2,
     pub texture_id: crate::texture::TextureId,
 }
 
@@ -212,13 +212,13 @@ impl TextureInstance {
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct TextureInstanceRaw {
-    position: UVec3,
-    scale: UVec2,
+    position: IVec3,
+    scale: IVec2,
 }
 
 impl TextureInstanceRaw {
     const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![2 => Uint32x3, 3 => Uint32x2];
+        wgpu::vertex_attr_array![2 => Sint32x3, 3 => Sint32x2];
 
     fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -231,19 +231,19 @@ impl TextureInstanceRaw {
 
 const RECT_VERTICES: &[Vertex] = &[
     Vertex {
-        position: Vec3::new(1.0, 1.0, 0.0),
+        position: Vec2::new(1.0, 0.0),
         uv: Vec2::new(1.0, 0.0),
     },
     Vertex {
-        position: Vec3::new(0.0, 1.0, 0.0),
+        position: Vec2::new(0.0, 0.0),
         uv: Vec2::new(0.0, 0.0),
     },
     Vertex {
-        position: Vec3::new(0.0, 0.0, 0.0),
+        position: Vec2::new(0.0, -1.0),
         uv: Vec2::new(0.0, 1.0),
     },
     Vertex {
-        position: Vec3::new(1.0, 0.0, 0.0),
+        position: Vec2::new(1.0, -1.0),
         uv: Vec2::new(1.0, 1.0),
     },
 ];
