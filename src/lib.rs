@@ -13,6 +13,8 @@ use std::sync::Arc;
 use types::Rect;
 use wgpu::{BindGroupDescriptor, BindGroupLayoutDescriptor, util::DeviceExt};
 
+use crate::types::Dimension;
+
 /// Interface for guiug application.
 ///
 /// # Example
@@ -249,8 +251,10 @@ impl<'a> State<'a> {
             });
 
             let visitor = NodeVisitor::visit(
-                self.surface_configuration.width,
-                self.surface_configuration.height,
+                Dimension::new(
+                    self.surface_configuration.width as i32,
+                    self.surface_configuration.height as i32,
+                ),
                 &self.scene,
             );
 
@@ -298,27 +302,24 @@ impl<'a> State<'a> {
 }
 
 pub(crate) struct NodeVisitor {
+    screen_size: Dimension,
     rect_instances: Vec<renderer::FlatInstance>,
     texture_instances: Vec<renderer::TextureInstance>,
     z_index: i32,
 }
 
 impl NodeVisitor {
-    pub fn visit(screen_width: u32, screen_height: u32, scene: &Scene) -> Self {
+    pub fn visit(screen_size: Dimension, scene: &Scene) -> Self {
         let mut visitor = Self {
+            screen_size,
             rect_instances: Vec::new(),
             texture_instances: Vec::new(),
             z_index: 0,
         };
         if let Some(root_node) = scene.root_node {
-            let rect = Rect {
-                x: 0,
-                y: 0,
-                w: screen_width as i32,
-                h: screen_height as i32,
-            };
+            let screen_rect = Rect::new(0, 0, screen_size.width, screen_size.height);
 
-            visitor.do_visit(scene, root_node, rect);
+            visitor.do_visit(scene, root_node, screen_rect);
         }
         visitor
     }
@@ -328,7 +329,7 @@ impl NodeVisitor {
             match node {
                 Node::Layer { inner } => {
                     for (position, child_node_id) in inner {
-                        let child_rect = position.resolve(rect);
+                        let child_rect = position.apply(rect, self.screen_size);
                         self.do_visit(scene, *child_node_id, child_rect);
                         self.z_index += 1;
                     }

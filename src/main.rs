@@ -14,36 +14,36 @@ fn main() {
     let mut root = vec![
         (
             Position::new(
-                Anchor::start(Size::Ratio(0.2), Size::Pixel(200)),
-                Anchor::end(Size::Ratio(0.4), Size::Pixel(200)),
+                Anchor::start(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
+                Anchor::end(Size::ParentHeight(0.4), Size::ScreenWidth(0.2)),
             ),
             guiug.texture_node(awesomeface_texture),
         ),
         (
             Position::new(
-                Anchor::end(Size::Ratio(0.2), Size::Pixel(200)),
-                Anchor::end(Size::Ratio(0.4), Size::Pixel(200)),
+                Anchor::end(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
+                Anchor::end(Size::ParentHeight(0.4), Size::ScreenWidth(0.2)),
             ),
             guiug.texture_node(ldmsys_texture),
         ),
         (
             Position::new(
-                Anchor::start(Size::Ratio(0.2), Size::Pixel(200)),
-                Anchor::end(Size::Ratio(0.1), Size::Pixel(200)),
+                Anchor::start(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
+                Anchor::end(Size::ParentHeight(0.1), Size::ScreenWidth(0.2)),
             ),
             guiug.texture_node(demisoda_texture),
         ),
         (
             Position::new(
-                Anchor::end(Size::Ratio(0.2), Size::Pixel(200)),
-                Anchor::end(Size::Ratio(0.1), Size::Pixel(200)),
+                Anchor::end(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
+                Anchor::end(Size::ParentHeight(0.1), Size::ScreenWidth(0.2)),
             ),
             guiug.texture_node(library_texture),
         ),
         (
             Position::new(
                 Anchor::stretch(Size::Pixel(100), Size::Pixel(100)),
-                Anchor::start(Size::Ratio(0.1), Size::Ratio(0.2)),
+                Anchor::start(Size::ParentHeight(0.1), Size::ParentHeight(0.2)),
             ),
             guiug.texture_node(gamma_texture),
         ),
@@ -54,8 +54,14 @@ fn main() {
             let color = Vec4::new(0.1 * i as f32, 0.1 * j as f32, 0.0, 1.0);
             root.push((
                 Position::new(
-                    Anchor::start(Size::Ratio(0.1 * i as f32 + 0.02), Size::Ratio(0.06)),
-                    Anchor::start(Size::Ratio(0.1 * j as f32 + 0.02), Size::Ratio(0.06)),
+                    Anchor::start(
+                        Size::ParentWidth(0.1 * i as f32 + 0.02),
+                        Size::ParentWidth(0.06),
+                    ),
+                    Anchor::start(
+                        Size::ParentHeight(0.1 * j as f32 + 0.02),
+                        Size::ParentHeight(0.06),
+                    ),
                 ),
                 guiug.rect_node(color),
             ));
