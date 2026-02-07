@@ -12,7 +12,7 @@ struct VertexOutput {
 }
 
 @group(0) @binding(0)
-var<uniform> screen_size: vec2u;
+var<uniform> screen_size: vec3u;
 
 
 @vertex
@@ -22,10 +22,11 @@ fn vs_main(
     var out: VertexOutput;
     let position_pixel = in.position * vec2f(in.instance_scale) + vec2f(f32(in.instance_position.x), f32(i32(screen_size.y) - in.instance_position.y));
 
-    let screen_size_f = vec2f(screen_size);
+    let screen_size_f = vec2f(screen_size.xy);
 
     let position_normalized = position_pixel / screen_size_f;
-    let position_ndc = vec4f(2.0 * vec2f(position_normalized) - 1.0, f32(in.instance_position.z) / 10000.0, 1.0);
+    let position_ndc = vec4f(2.0 * vec2f(position_normalized) - 1.0, f32(in.instance_position.z) / f32(screen_size.z), 1.0);
+
 
 
     out.clip_position = position_ndc;

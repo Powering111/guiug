@@ -17,44 +17,31 @@ pub struct Scene {
 }
 
 impl Scene {
-    pub fn set_root(&mut self, root_node: NodeId) {
-        self.root_node = Some(root_node);
-    }
-
-    fn insert(&mut self, node: Node) -> NodeId {
+    // Allocate new NodeId and associate the given node to it. Created NodeId will be returned.
+    pub(crate) fn insert_node(&mut self, node: Node) -> NodeId {
         let id = self.last_id;
         self.last_id += 1;
         self.nodes.entry(id).insert_entry(node);
         id
     }
 
-    pub(crate) fn get(&self, id: &NodeId) -> Option<&Node> {
+    pub(crate) fn get_node(&self, id: &NodeId) -> Option<&Node> {
         self.nodes.get(id)
-    }
-
-    pub fn layer_node(&mut self, inner: Vec<(Position, NodeId)>) -> NodeId {
-        let node = Node::Layer { inner };
-        self.insert(node)
-    }
-
-    pub fn rect_node(&mut self, color: Vec4) -> NodeId {
-        let node = Node::Rect { color };
-        self.insert(node)
-    }
-
-    pub fn texture_node(&mut self, texture_id: texture::TextureId) -> NodeId {
-        let node = Node::Texture { texture_id };
-        self.insert(node)
     }
 }
 
 /// Node in the scene tree.
 #[derive(Clone, Debug)]
 pub enum Node {
+    // Container nodes
     Layer { inner: Vec<(Position, NodeId)> },
+    Row { inner: Vec<(Size, NodeId)> },
+    Column { inner: Vec<(Size, NodeId)> },
 
+    // Display nodes
     Rect { color: Vec4 },
     Texture { texture_id: texture::TextureId },
+    Empty,
 }
 
 /// Position and size of the node.
@@ -65,7 +52,12 @@ pub struct Position {
 }
 
 impl Position {
-    pub fn new(horizontal: Anchor, vertical: Anchor) -> Self {
+    pub const FULL: Self = Self {
+        horizontal: Anchor::stretch(Size::ZERO, Size::ZERO),
+        vertical: Anchor::stretch(Size::ZERO, Size::ZERO),
+    };
+
+    pub const fn new(horizontal: Anchor, vertical: Anchor) -> Self {
         Self {
             horizontal,
             vertical,
@@ -123,8 +115,9 @@ impl Anchor {
                 size.resolve(parent_size, screen_size),
             ),
             Anchor::Center { pos, size } => (
-                parent_pos + parent_size_curr / 2 + pos.resolve(parent_size, screen_size)
-                    - size.resolve(parent_size, screen_size) / 2,
+                parent_pos
+                    + pos.resolve(parent_size, screen_size)
+                    + (parent_size_curr - size.resolve(parent_size, screen_size)) / 2,
                 size.resolve(parent_size, screen_size),
             ),
             Anchor::End { pos: end, size } => (
@@ -141,19 +134,19 @@ impl Anchor {
         }
     }
 
-    pub fn start(pos: Size, size: Size) -> Self {
+    pub const fn start(pos: Size, size: Size) -> Self {
         Self::Start { pos, size }
     }
 
-    pub fn center(pos: Size, size: Size) -> Self {
+    pub const fn center(pos: Size, size: Size) -> Self {
         Self::Center { pos, size }
     }
 
-    pub fn end(pos: Size, size: Size) -> Self {
+    pub const fn end(pos: Size, size: Size) -> Self {
         Self::End { pos, size }
     }
 
-    pub fn stretch(start: Size, end: Size) -> Self {
+    pub const fn stretch(start: Size, end: Size) -> Self {
         Self::Stretch { start, end }
     }
 }
@@ -179,18 +172,23 @@ pub enum Size {
     /// Size relative to the entire screen height.
     /// the value sets ratio to the screen height.
     ScreenHeight(f32),
+
+    /// The size will be determined by weighted division among the 'Size::Weight' nodes over the available size left.
+    /// Can only be used in Row/Column node.
+    Weight(f32),
 }
 
 impl Size {
     pub const ZERO: Self = Self::Pixel(0);
 
-    fn resolve(&self, parent_size: Dimension, screen_size: Dimension) -> i32 {
+    pub(crate) fn resolve(&self, parent_size: Dimension, screen_size: Dimension) -> i32 {
         match self {
             Size::Pixel(pixel) => *pixel,
             Size::ParentWidth(ratio) => (parent_size.width as f32 * ratio) as i32,
             Size::ParentHeight(ratio) => (parent_size.height as f32 * ratio) as i32,
             Size::ScreenWidth(ratio) => (screen_size.width as f32 * ratio) as i32,
             Size::ScreenHeight(ratio) => (screen_size.height as f32 * ratio) as i32,
+            Size::Weight(_) => 0,
         }
     }
 }

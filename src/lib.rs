@@ -7,7 +7,7 @@ mod texture;
 mod types;
 
 pub use glam::Vec4;
-use glam::{IVec2, IVec3, UVec2};
+use glam::{IVec2, IVec3, UVec3};
 pub use scene::{Anchor, Node, NodeId, Position, Scene, Size};
 use std::sync::Arc;
 use types::Rect;
@@ -38,24 +38,45 @@ impl<'a> Guiug<'a> {
 
     /// Set scene root. You have to set root in order to render anything on the screen. Root node will have same size as the screen.
     pub fn set_root(&mut self, root_node: NodeId) {
-        self.scene.set_root(root_node)
+        self.scene.root_node = Some(root_node);
     }
 
     /// Create Layer node.
     /// First one will be visible when overlapped.
     pub fn layer_node(&mut self, inner: Vec<(Position, NodeId)>) -> NodeId {
-        self.scene.layer_node(inner)
+        let node = Node::Layer { inner };
+        self.scene.insert_node(node)
     }
 
     /// Create Rect node. It renders as solid rectangle. Color is RGBA0~1 Vec4.
     pub fn rect_node(&mut self, color: Vec4) -> NodeId {
-        self.scene.rect_node(color)
+        let node = Node::Rect { color };
+        self.scene.insert_node(node)
     }
 
     /// Create texture node. It renders as rectangular image.
     /// To create texture, use [Self::add_texture]
     pub fn texture_node(&mut self, texture_id: texture::TextureId) -> NodeId {
-        self.scene.texture_node(texture_id)
+        let node = Node::Texture { texture_id };
+        self.scene.insert_node(node)
+    }
+
+    /// Create row node.
+    pub fn row_node(&mut self, inner: Vec<(Size, NodeId)>) -> NodeId {
+        let node = Node::Row { inner };
+        self.scene.insert_node(node)
+    }
+
+    /// Create column node.
+    pub fn column_node(&mut self, inner: Vec<(Size, NodeId)>) -> NodeId {
+        let node = Node::Column { inner };
+        self.scene.insert_node(node)
+    }
+
+    /// Create empty node. It can be used for space between row or column elements.
+    pub fn empty_node(&mut self) -> NodeId {
+        let node = Node::Empty;
+        self.scene.insert_node(node)
     }
 }
 
@@ -160,7 +181,7 @@ impl<'a> State<'a> {
                 }],
             });
 
-        let screen_size = UVec2::new(size.width, size.height);
+        let screen_size = UVec3::new(size.width, size.height, 0);
         let screen_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("screen uniform buffer"),
             contents: bytemuck::cast_slice(&[screen_size]),
@@ -250,12 +271,20 @@ impl<'a> State<'a> {
                 ..Default::default()
             });
 
-            let visitor = NodeVisitor::visit(
-                Dimension::new(
-                    self.surface_configuration.width as i32,
-                    self.surface_configuration.height as i32,
-                ),
-                &self.scene,
+            let screen_size = Dimension::new(
+                self.surface_configuration.width as i32,
+                self.surface_configuration.height as i32,
+            );
+            let visitor = NodeVisitor::visit(screen_size, &self.scene);
+
+            self.queue.write_buffer(
+                &self.screen_uniform_buffer,
+                0,
+                bytemuck::cast_slice(&[UVec3::new(
+                    screen_size.width as u32,
+                    screen_size.height as u32,
+                    visitor.z_index as u32,
+                )]),
             );
 
             // bind screen uniform
@@ -292,12 +321,6 @@ impl<'a> State<'a> {
 
         self.depth_texture_view =
             texture::create_depth_texture(&self.device, &self.surface_configuration);
-
-        self.queue.write_buffer(
-            &self.screen_uniform_buffer,
-            0,
-            bytemuck::cast_slice(&[UVec2::new(width, height)]),
-        );
     }
 }
 
@@ -325,13 +348,57 @@ impl NodeVisitor {
     }
 
     pub fn do_visit(&mut self, scene: &Scene, node_id: NodeId, rect: Rect) {
-        if let Some(node) = scene.get(&node_id) {
+        if let Some(node) = scene.get_node(&node_id) {
             match node {
                 Node::Layer { inner } => {
                     for (position, child_node_id) in inner {
                         let child_rect = position.apply(rect, self.screen_size);
                         self.do_visit(scene, *child_node_id, child_rect);
                         self.z_index += 1;
+                    }
+                }
+                Node::Row { inner } => {
+                    let mut total_size = rect.h;
+                    let mut total_weight = 0.0;
+                    for (size, _) in inner {
+                        total_size -= size.resolve(rect.dimension(), self.screen_size);
+                        if let Size::Weight(weight) = size {
+                            total_weight += weight;
+                        }
+                    }
+
+                    let mut pos = rect.y;
+                    for (size, child_node_id) in inner {
+                        let size = if let Size::Weight(weight) = size {
+                            (total_size as f32 * (weight / total_weight)) as i32
+                        } else {
+                            size.resolve(rect.dimension(), self.screen_size)
+                        }
+                        .max(0);
+                        self.do_visit(scene, *child_node_id, Rect::new(rect.x, pos, rect.w, size));
+                        pos += size;
+                    }
+                }
+                Node::Column { inner } => {
+                    let mut total_size = rect.w;
+                    let mut total_weight = 0.0;
+                    for (size, _) in inner {
+                        total_size -= size.resolve(rect.dimension(), self.screen_size);
+                        if let Size::Weight(weight) = size {
+                            total_weight += weight;
+                        }
+                    }
+
+                    let mut pos = rect.x;
+                    for (size, child_node_id) in inner {
+                        let size = if let Size::Weight(weight) = size {
+                            (total_size as f32 * (weight / total_weight)) as i32
+                        } else {
+                            size.resolve(rect.dimension(), self.screen_size)
+                        }
+                        .max(0);
+                        self.do_visit(scene, *child_node_id, Rect::new(pos, rect.y, size, rect.h));
+                        pos += size;
                     }
                 }
                 Node::Rect { color } => self.rect_instances.push(renderer::FlatInstance {
@@ -346,6 +413,7 @@ impl NodeVisitor {
                         texture_id: *texture_id,
                     })
                 }
+                Node::Empty => (),
             }
         }
     }
@@ -362,7 +430,7 @@ impl<'a> winit::application::ApplicationHandler for Handler<'a> {
         let window = event_loop
             .create_window(
                 winit::window::Window::default_attributes()
-                    .with_inner_size(winit::dpi::PhysicalSize::new(1000, 1000))
+                    .with_inner_size(winit::dpi::PhysicalSize::new(800, 800))
                     .with_title(self.title)
                     .with_visible(false),
             )
