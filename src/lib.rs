@@ -1,6 +1,7 @@
 //! Declarative GUI library in Rust.
 //! Create [Guiug] object and call [run] with it.
 
+mod font;
 mod renderer;
 mod scene;
 mod texture;
@@ -11,7 +12,6 @@ use glam::{IVec2, IVec3, UVec3};
 pub use scene::{Anchor, Node, NodeId, Position, Scene, Size};
 use std::sync::Arc;
 use types::Rect;
-use wgpu::{BindGroupDescriptor, BindGroupLayoutDescriptor, util::DeviceExt};
 
 use crate::types::Dimension;
 
@@ -28,12 +28,18 @@ use crate::types::Dimension;
 pub struct Guiug<'a> {
     scene: Scene,
     texture_info_manager: texture::TextureInfoManager<'a>,
+    font_info_manager: font::FontInfoManager<'a>,
 }
 
 impl<'a> Guiug<'a> {
     /// Add texture to be loaded and used later. You can use the returned TextureId to construct texture node.
     pub fn add_texture(&mut self, texture_data: &'a [u8]) -> texture::TextureId {
         self.texture_info_manager.add_texture_info(texture_data)
+    }
+
+    /// Add font to be loaded and used later. You can use the returned FontId to construct text node.
+    pub fn add_font(&mut self, font_data: &'a [u8]) -> font::FontId {
+        self.font_info_manager.add_font_info(font_data)
     }
 
     /// Set scene root. You have to set root in order to render anything on the screen. Root node will have same size as the screen.
@@ -58,6 +64,24 @@ impl<'a> Guiug<'a> {
     /// To create texture, use [Self::add_texture]
     pub fn texture_node(&mut self, texture_id: texture::TextureId) -> NodeId {
         let node = Node::Texture { texture_id };
+        self.scene.insert_node(node)
+    }
+
+    /// Create text node. Its position will be the leftmost point of the baseline.
+    /// To create font, use [Self::add_font]
+    pub fn text_node(
+        &mut self,
+        text: String,
+        font_id: font::FontId,
+        size: f32,
+        color: Vec4,
+    ) -> NodeId {
+        let node = Node::Text {
+            text,
+            font_id,
+            size,
+            color,
+        };
         self.scene.insert_node(node)
     }
 
@@ -110,10 +134,11 @@ struct State<'a> {
 
     flat_renderer: renderer::FlatRenderer,
     texture_renderer: renderer::TextureRenderer,
-    screen_uniform_buffer: wgpu::Buffer,
-    screen_uniform_bind_group: wgpu::BindGroup,
+    text_renderer: renderer::TextRenderer,
+    screen_uniform: renderer::Uniform,
 
     texture_manager: texture::TextureManager,
+    font_manager: font::FontManager,
 }
 
 impl<'a> State<'a> {
@@ -165,50 +190,28 @@ impl<'a> State<'a> {
         let mut texture_manager = texture::TextureManager::new(&device);
         texture_manager.load(&device, &queue, &guiug.texture_info_manager);
 
+        // font manager
+        let mut font_manager = font::FontManager::new(&device);
+        font_manager.load(&guiug.font_info_manager);
+
         // screen uniform
-        let screen_bind_group_layout =
-            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-                label: None,
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            });
-
-        let screen_size = UVec3::new(size.width, size.height, 0);
-        let screen_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("screen uniform buffer"),
-            contents: bytemuck::cast_slice(&[screen_size]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let screen_uniform_bind_group = device.create_bind_group(&BindGroupDescriptor {
-            label: Some("screen uniform bind group"),
-            layout: &screen_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                    buffer: &screen_uniform_buffer,
-                    offset: 0,
-                    size: None,
-                }),
-            }],
-        });
+        let screen_uniform = renderer::Uniform::new(&device, size_of::<UVec3>() as u64);
 
         // renderer
         let flat_renderer =
-            renderer::FlatRenderer::new(&device, surface_format, &screen_bind_group_layout);
+            renderer::FlatRenderer::new(&device, surface_format, &screen_uniform.bind_group_layout);
 
         let texture_renderer = renderer::TextureRenderer::new(
             &device,
             surface_format,
-            &screen_bind_group_layout,
+            &screen_uniform.bind_group_layout,
+            &texture_manager.bind_group_layout,
+        );
+
+        let text_renderer = renderer::TextRenderer::new(
+            &device,
+            surface_format,
+            &screen_uniform.bind_group_layout,
             &texture_manager.bind_group_layout,
         );
 
@@ -224,10 +227,11 @@ impl<'a> State<'a> {
             surface_configuration,
             flat_renderer,
             texture_renderer,
-            screen_uniform_buffer,
-            screen_uniform_bind_group,
+            text_renderer,
+            screen_uniform,
 
             texture_manager,
+            font_manager,
             depth_texture_view,
         }
     }
@@ -277,18 +281,16 @@ impl<'a> State<'a> {
             );
             let visitor = NodeVisitor::visit(screen_size, &self.scene);
 
-            self.queue.write_buffer(
-                &self.screen_uniform_buffer,
-                0,
+            // screen uniform
+            self.screen_uniform.write(
+                &self.queue,
                 bytemuck::cast_slice(&[UVec3::new(
                     screen_size.width as u32,
                     screen_size.height as u32,
                     visitor.z_index as u32,
                 )]),
             );
-
-            // bind screen uniform
-            render_pass.set_bind_group(0, &self.screen_uniform_bind_group, &[]);
+            self.screen_uniform.set(&mut render_pass, 0);
 
             // Flat rendering
             self.flat_renderer
@@ -301,6 +303,15 @@ impl<'a> State<'a> {
                 &self.texture_manager,
                 visitor.texture_instances,
             );
+
+            // Text rendering
+            self.text_renderer.draw(
+                &mut render_pass,
+                &self.device,
+                &self.queue,
+                &self.font_manager,
+                visitor.text_instances,
+            )
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
@@ -328,6 +339,7 @@ pub(crate) struct NodeVisitor {
     screen_size: Dimension,
     rect_instances: Vec<renderer::FlatInstance>,
     texture_instances: Vec<renderer::TextureInstance>,
+    text_instances: Vec<renderer::TextInstance>,
     z_index: i32,
 }
 
@@ -337,6 +349,7 @@ impl NodeVisitor {
             screen_size,
             rect_instances: Vec::new(),
             texture_instances: Vec::new(),
+            text_instances: Vec::new(),
             z_index: 0,
         };
         if let Some(root_node) = scene.root_node {
@@ -413,6 +426,18 @@ impl NodeVisitor {
                         texture_id: *texture_id,
                     })
                 }
+                Node::Text {
+                    text,
+                    font_id,
+                    size,
+                    color,
+                } => self.text_instances.push(renderer::TextInstance {
+                    text: text.clone(),
+                    position: IVec3::new(rect.x, rect.y, self.z_index),
+                    size: *size,
+                    font_id: *font_id,
+                    color: *color,
+                }),
                 Node::Empty => (),
             }
         }

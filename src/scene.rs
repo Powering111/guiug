@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    texture,
+    font, texture,
     types::{Dimension, Rect},
 };
 use glam::Vec4;
@@ -34,13 +34,29 @@ impl Scene {
 #[derive(Clone, Debug)]
 pub enum Node {
     // Container nodes
-    Layer { inner: Vec<(Position, NodeId)> },
-    Row { inner: Vec<(Size, NodeId)> },
-    Column { inner: Vec<(Size, NodeId)> },
+    Layer {
+        inner: Vec<(Position, NodeId)>,
+    },
+    Row {
+        inner: Vec<(Size, NodeId)>,
+    },
+    Column {
+        inner: Vec<(Size, NodeId)>,
+    },
 
     // Display nodes
-    Rect { color: Vec4 },
-    Texture { texture_id: texture::TextureId },
+    Rect {
+        color: Vec4,
+    },
+    Texture {
+        texture_id: texture::TextureId,
+    },
+    Text {
+        text: String,
+        font_id: font::FontId,
+        size: f32,
+        color: Vec4,
+    },
     Empty,
 }
 

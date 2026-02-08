@@ -229,6 +229,145 @@ impl TextureInstanceRaw {
     }
 }
 
+pub struct TextRenderer {
+    render_pipeline: wgpu::RenderPipeline,
+    instance_buffer: wgpu::Buffer,
+    vbuf: VertexBuffer,
+}
+
+impl TextRenderer {
+    pub fn new(
+        device: &wgpu::Device,
+        surface_format: wgpu::TextureFormat,
+        screen_bind_group_layout: &wgpu::BindGroupLayout,
+        texture_bind_group_layout: &wgpu::BindGroupLayout,
+    ) -> Self {
+        let shader = device.create_shader_module(wgpu::include_wgsl!("shader/text.wgsl"));
+        let render_pipeline = create_render_pipeline(
+            device,
+            &shader,
+            &[Vertex::desc(), TextInstanceRaw::desc()],
+            &[screen_bind_group_layout, texture_bind_group_layout],
+            surface_format,
+        );
+
+        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: 1024 * 32,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let vbuf = VertexBuffer::new(device, RECT_VERTICES, RECT_INDICES);
+        Self {
+            render_pipeline,
+            instance_buffer,
+            vbuf,
+        }
+    }
+
+    pub fn draw(
+        &self,
+        render_pass: &mut wgpu::RenderPass,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        font_manager: &crate::font::FontManager,
+        mut instances: Vec<TextInstance>,
+    ) {
+        if instances.is_empty() {
+            return;
+        }
+
+        instances.sort_by_key(|instance| instance.font_id);
+
+        let mut instances_raw = Vec::new();
+        for instance in instances.iter() {
+            if let Some(font) = font_manager.get_font(instance.font_id) {
+                let mut pos = instance.position;
+                for character in instance.text.chars() {
+                    let metrics = font.metrics(character, instance.size);
+                    instances_raw.push(TextInstanceRaw {
+                        position: pos
+                            + IVec3::new(metrics.xmin, -metrics.ymin - metrics.height as i32, 0),
+                        scale: IVec2::new(metrics.width as i32, metrics.height as i32),
+                        color: instance.color,
+                    });
+
+                    pos.x += metrics.advance_width as i32;
+                    pos.y -= metrics.advance_height as i32;
+                }
+            }
+        }
+        queue.write_buffer(
+            &self.instance_buffer,
+            0,
+            bytemuck::cast_slice(&instances_raw),
+        );
+
+        render_pass.set_pipeline(&self.render_pipeline);
+        self.vbuf.set(render_pass);
+        render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+
+        let mut num = 0;
+        for instance in instances.iter() {
+            if let Some(font) = font_manager.get_font(instance.font_id) {
+                for character in instance.text.chars() {
+                    let (metrics, bitmap) = font.rasterize(character, instance.size);
+
+                    if metrics.width > 0 && metrics.height > 0 {
+                        let texture = crate::texture::Texture::from_bytes_r8(
+                            device,
+                            queue,
+                            (metrics.width as u32, metrics.height as u32),
+                            &bitmap,
+                            &font_manager.bind_group_layout,
+                            &font_manager.sampler,
+                        );
+
+                        render_pass.set_bind_group(1, &texture.bind_group, &[]);
+                        render_pass.draw_indexed(
+                            0..self.vbuf.index_count,
+                            0,
+                            num as u32..(num + 1) as u32,
+                        );
+                    }
+                    num += 1;
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct TextInstance {
+    pub text: String,
+    pub position: IVec3,
+    pub size: f32,
+    pub font_id: crate::font::FontId,
+    pub color: Vec4,
+}
+
+#[repr(C, packed)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct TextInstanceRaw {
+    position: IVec3,
+    scale: IVec2,
+    color: Vec4,
+}
+
+impl TextInstanceRaw {
+    const ATTRIBS: [wgpu::VertexAttribute; 3] =
+        wgpu::vertex_attr_array![2 => Sint32x3, 3 => Sint32x2, 4 => Float32x4];
+
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &Self::ATTRIBS,
+        }
+    }
+}
+
 const RECT_VERTICES: &[Vertex] = &[
     Vertex {
         position: Vec2::new(1.0, 0.0),
@@ -283,6 +422,61 @@ impl VertexBuffer {
     }
 }
 
+pub(crate) struct Uniform {
+    buffer: wgpu::Buffer,
+    pub bind_group_layout: wgpu::BindGroupLayout,
+    bind_group: wgpu::BindGroup,
+}
+
+impl Uniform {
+    pub(crate) fn new(device: &wgpu::Device, size: u64) -> Self {
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::UNIFORM,
+            mapped_at_creation: false,
+        });
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: None,
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &buffer,
+                    offset: 0,
+                    size: None,
+                }),
+            }],
+        });
+        Self {
+            buffer,
+            bind_group_layout,
+            bind_group,
+        }
+    }
+
+    pub(crate) fn write(&self, queue: &wgpu::Queue, data: &[u8]) {
+        queue.write_buffer(&self.buffer, 0, data);
+    }
+
+    pub(crate) fn set(&self, render_pass: &mut wgpu::RenderPass, bind_group_index: u32) {
+        render_pass.set_bind_group(bind_group_index, &self.bind_group, &[]);
+    }
+}
+
 fn create_render_pipeline(
     device: &wgpu::Device,
     shader: &wgpu::ShaderModule,
@@ -310,7 +504,7 @@ fn create_render_pipeline(
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format: surface_format,
-                blend: Some(wgpu::BlendState::REPLACE),
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),

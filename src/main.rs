@@ -10,8 +10,35 @@ fn main() {
     let library_texture = guiug.add_texture(include_bytes!("res/kaist_library.jpg"));
     let gamma_texture = guiug.add_texture(include_bytes!("res/gamma-ramp32.png"));
 
+    // font info
+    let arial_font = guiug.add_font(include_bytes!("res/arial.ttf"));
+
     // construct scene
     let mut root = vec![
+        (
+            Position::new(
+                Anchor::start(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
+                Anchor::start(Size::ParentHeight(0.4), Size::ScreenWidth(0.2)),
+            ),
+            guiug.text_node(
+                "Hello world!".to_owned(),
+                arial_font,
+                40.0,
+                Vec4::new(1.0, 1.0, 1.0, 1.0),
+            ),
+        ),
+        (
+            Position::new(
+                Anchor::start(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
+                Anchor::start(Size::ParentHeight(0.5), Size::ScreenWidth(0.2)),
+            ),
+            guiug.text_node(
+                "Hello world!".to_owned(),
+                arial_font,
+                40.0,
+                Vec4::new(1.0, 0.0, 1.0, 1.0),
+            ),
+        ),
         (
             Position::new(
                 Anchor::start(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
