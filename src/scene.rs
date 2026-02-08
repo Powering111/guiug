@@ -54,7 +54,7 @@ pub enum Node {
     Text {
         text: String,
         font_id: font::FontId,
-        size: f32,
+        size: u16,
         color: Vec4,
     },
     Empty,

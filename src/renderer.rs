@@ -271,7 +271,7 @@ impl TextRenderer {
         render_pass: &mut wgpu::RenderPass,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        font_manager: &crate::font::FontManager,
+        font_manager: &mut crate::font::FontManager,
         mut instances: Vec<TextInstance>,
     ) {
         if instances.is_empty() {
@@ -310,20 +310,18 @@ impl TextRenderer {
 
         let mut num = 0;
         for instance in instances.iter() {
+            let bind_group_layout = font_manager.bind_group_layout.clone();
+            let sampler = font_manager.sampler.clone();
             if let Some(font) = font_manager.get_font(instance.font_id) {
                 for character in instance.text.chars() {
-                    let (metrics, bitmap) = font.rasterize(character, instance.size);
-
-                    if metrics.width > 0 && metrics.height > 0 {
-                        let texture = crate::texture::Texture::from_bytes_r8(
-                            device,
-                            queue,
-                            (metrics.width as u32, metrics.height as u32),
-                            &bitmap,
-                            &font_manager.bind_group_layout,
-                            &font_manager.sampler,
-                        );
-
+                    if let Some(texture) = font.get_texture(
+                        device,
+                        queue,
+                        &bind_group_layout,
+                        &sampler,
+                        character,
+                        instance.size,
+                    ) {
                         render_pass.set_bind_group(1, &texture.bind_group, &[]);
                         render_pass.draw_indexed(
                             0..self.vbuf.index_count,
@@ -342,7 +340,7 @@ impl TextRenderer {
 pub(crate) struct TextInstance {
     pub text: String,
     pub position: IVec3,
-    pub size: f32,
+    pub size: u16,
     pub font_id: crate::font::FontId,
     pub color: Vec4,
 }

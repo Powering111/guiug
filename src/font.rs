@@ -78,27 +78,55 @@ impl FontManager {
         }
     }
 
-    pub(crate) fn get_font(&self, font_id: FontId) -> Option<&Font> {
-        self.fonts.get(&font_id)
+    pub(crate) fn get_font(&mut self, font_id: FontId) -> Option<&mut Font> {
+        self.fonts.get_mut(&font_id)
     }
 }
 
 pub(crate) struct Font {
     inner: fontdue::Font,
-}
-
-impl core::ops::Deref for Font {
-    type Target = fontdue::Font;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
+    cache: std::collections::HashMap<(char, u16), Option<crate::texture::Texture>>,
 }
 
 impl Font {
     fn from_bytes(data: &[u8]) -> Self {
         Self {
             inner: fontdue::Font::from_bytes(data, fontdue::FontSettings::default()).unwrap(),
+            cache: HashMap::new(),
         }
+    }
+
+    pub fn metrics(&self, character: char, size: u16) -> fontdue::Metrics {
+        self.inner.metrics(character, size as f32)
+    }
+
+    pub fn get_texture(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        bind_group_layout: &wgpu::BindGroupLayout,
+        sampler: &wgpu::Sampler,
+        character: char,
+        size: u16,
+    ) -> Option<&crate::texture::Texture> {
+        self.cache
+            .entry((character, size))
+            .or_insert_with(|| {
+                let (metrics, bitmap) = self.inner.rasterize(character, size as f32);
+
+                if metrics.width > 0 && metrics.height > 0 {
+                    Some(crate::texture::Texture::from_bytes_r8(
+                        device,
+                        queue,
+                        (metrics.width as u32, metrics.height as u32),
+                        &bitmap,
+                        bind_group_layout,
+                        sampler,
+                    ))
+                } else {
+                    None
+                }
+            })
+            .as_ref()
     }
 }

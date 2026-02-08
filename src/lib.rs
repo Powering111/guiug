@@ -73,7 +73,7 @@ impl<'a> Guiug<'a> {
         &mut self,
         text: String,
         font_id: font::FontId,
-        size: f32,
+        size: u16,
         color: Vec4,
     ) -> NodeId {
         let node = Node::Text {
@@ -309,7 +309,7 @@ impl<'a> State<'a> {
                 &mut render_pass,
                 &self.device,
                 &self.queue,
-                &self.font_manager,
+                &mut self.font_manager,
                 visitor.text_instances,
             )
         }

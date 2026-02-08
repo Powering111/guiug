@@ -23,7 +23,7 @@ fn main() {
             guiug.text_node(
                 "Hello world!".to_owned(),
                 arial_font,
-                40.0,
+                40,
                 Vec4::new(1.0, 1.0, 1.0, 1.0),
             ),
         ),
@@ -33,9 +33,9 @@ fn main() {
                 Anchor::start(Size::ParentHeight(0.5), Size::ScreenWidth(0.2)),
             ),
             guiug.text_node(
-                "Hello world!".to_owned(),
+                "Bye world!".to_owned(),
                 arial_font,
-                40.0,
+                40,
                 Vec4::new(1.0, 0.0, 1.0, 1.0),
             ),
         ),
