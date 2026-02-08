@@ -294,7 +294,6 @@ impl TextRenderer {
                     });
 
                     pos.x += metrics.advance_width as i32;
-                    pos.y -= metrics.advance_height as i32;
                 }
             }
         }

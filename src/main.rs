@@ -12,6 +12,7 @@ fn main() {
 
     // font info
     let arial_font = guiug.add_font(include_bytes!("res/arial.ttf"));
+    let malgun_font = guiug.add_font(include_bytes!("res/malgun.ttf"));
 
     // construct scene
     let mut root = vec![
@@ -37,6 +38,18 @@ fn main() {
                 arial_font,
                 40,
                 Vec4::new(1.0, 0.0, 1.0, 1.0),
+            ),
+        ),
+        (
+            Position::new(
+                Anchor::start(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
+                Anchor::start(Size::ParentHeight(0.6), Size::ScreenWidth(0.2)),
+            ),
+            guiug.text_node(
+                "즐거운 하루!!!".to_owned(),
+                malgun_font,
+                60,
+                Vec4::new(0.0, 0.0, 1.0, 1.0),
             ),
         ),
         (
