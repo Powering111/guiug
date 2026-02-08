@@ -15,7 +15,34 @@ fn main() {
     let malgun_font = guiug.add_font(include_bytes!("res/malgun.ttf"));
 
     // construct scene
-    let mut root = vec![
+    let mut root = Vec::new();
+
+    for y in 0..100 {
+        for x in 0..100 {
+            let node = guiug.rect_node(Vec4::new(
+                (y % 100) as f32 / 100.0,
+                (x % 100) as f32 / 100.0,
+                0.0,
+                1.0,
+            ));
+            root.push((
+                Position::new(
+                    Anchor::end(Size::Pixel(x * 4), Size::Pixel(3)),
+                    Anchor::start(Size::Pixel(y * 4), Size::Pixel(3)),
+                ),
+                node,
+            ));
+        }
+    }
+
+    root.extend([
+        (
+            Position::new(
+                Anchor::end(Size::ZERO, Size::Pixel(400)),
+                Anchor::start(Size::ZERO, Size::Pixel(400)),
+            ),
+            guiug.rect_node(Vec4::new(1.0, 1.0, 1.0, 1.0)),
+        ),
         (
             Position::new(
                 Anchor::start(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
@@ -87,7 +114,7 @@ fn main() {
             ),
             guiug.texture_node(gamma_texture),
         ),
-    ];
+    ]);
 
     // Tile rectangles
     let mut row_vec = Vec::new();

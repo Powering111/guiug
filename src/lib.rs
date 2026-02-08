@@ -293,12 +293,17 @@ impl<'a> State<'a> {
             self.screen_uniform.set(&mut render_pass, 0);
 
             // Flat rendering
-            self.flat_renderer
-                .draw(&mut render_pass, &self.queue, visitor.rect_instances);
+            self.flat_renderer.draw(
+                &mut render_pass,
+                &self.device,
+                &self.queue,
+                visitor.rect_instances,
+            );
 
             // Texture rendering
             self.texture_renderer.draw(
                 &mut render_pass,
+                &self.device,
                 &self.queue,
                 &self.texture_manager,
                 visitor.texture_instances,

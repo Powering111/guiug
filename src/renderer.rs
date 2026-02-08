@@ -21,6 +21,8 @@ impl Vertex {
     }
 }
 
+const INITIAL_INSTANCE_BUFFER_SIZE: u64 = 1024;
+
 // Flat Renderer
 pub struct FlatRenderer {
     render_pipeline: wgpu::RenderPipeline,
@@ -45,7 +47,7 @@ impl FlatRenderer {
 
         let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
-            size: 1024 * size_of::<FlatInstance>() as u64,
+            size: INITIAL_INSTANCE_BUFFER_SIZE * size_of::<FlatInstance>() as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -60,8 +62,9 @@ impl FlatRenderer {
     }
 
     pub fn draw(
-        &self,
+        &mut self,
         render_pass: &mut wgpu::RenderPass,
+        device: &wgpu::Device,
         queue: &wgpu::Queue,
         instances: Vec<FlatInstance>,
     ) {
@@ -69,7 +72,17 @@ impl FlatRenderer {
             return;
         }
 
-        queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
+        let instances_bytes = bytemuck::cast_slice(&instances);
+        if instances_bytes.len() as u64 > self.instance_buffer.size() {
+            self.instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: instances_bytes.len() as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+
+        queue.write_buffer(&self.instance_buffer, 0, instances_bytes);
 
         render_pass.set_pipeline(&self.render_pipeline);
         self.vbuf.set(render_pass);
@@ -127,7 +140,7 @@ impl TextureRenderer {
 
         let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
-            size: 1024 * 32,
+            size: INITIAL_INSTANCE_BUFFER_SIZE * size_of::<TextureInstanceRaw>() as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -141,8 +154,9 @@ impl TextureRenderer {
     }
 
     pub fn draw(
-        &self,
+        &mut self,
         render_pass: &mut wgpu::RenderPass,
+        device: &wgpu::Device,
         queue: &wgpu::Queue,
         texture_manager: &crate::texture::TextureManager,
         mut instances: Vec<TextureInstance>,
@@ -155,11 +169,17 @@ impl TextureRenderer {
         let instances_raw: Vec<TextureInstanceRaw> =
             instances.iter().map(|instance| instance.raw()).collect();
 
-        queue.write_buffer(
-            &self.instance_buffer,
-            0,
-            bytemuck::cast_slice(&instances_raw),
-        );
+        let instances_bytes = bytemuck::cast_slice(&instances_raw);
+        if instances_bytes.len() as u64 > self.instance_buffer.size() {
+            self.instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: instances_bytes.len() as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+
+        queue.write_buffer(&self.instance_buffer, 0, instances_bytes);
         render_pass.set_pipeline(&self.render_pipeline);
         self.vbuf.set(render_pass);
         render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
@@ -267,7 +287,7 @@ impl TextRenderer {
     }
 
     pub fn draw(
-        &self,
+        &mut self,
         render_pass: &mut wgpu::RenderPass,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -281,6 +301,9 @@ impl TextRenderer {
         instances.sort_by_key(|instance| instance.font_id);
 
         let mut instances_raw = Vec::new();
+
+        let bind_group_layout = font_manager.bind_group_layout.clone();
+        let sampler = font_manager.sampler.clone();
         for instance in instances.iter() {
             if let Some(font) = font_manager.get_font(instance.font_id) {
                 let mut pos = instance.position;
@@ -294,14 +317,30 @@ impl TextRenderer {
                     });
 
                     pos.x += metrics.advance_width as i32;
+
+                    font.prepare_texture(
+                        device,
+                        queue,
+                        &bind_group_layout,
+                        &sampler,
+                        character,
+                        instance.size,
+                    )
                 }
             }
         }
-        queue.write_buffer(
-            &self.instance_buffer,
-            0,
-            bytemuck::cast_slice(&instances_raw),
-        );
+
+        let instances_bytes = bytemuck::cast_slice(&instances_raw);
+        if instances_bytes.len() as u64 > self.instance_buffer.size() {
+            self.instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: None,
+                size: instances_bytes.len() as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+
+        queue.write_buffer(&self.instance_buffer, 0, instances_bytes);
 
         render_pass.set_pipeline(&self.render_pipeline);
         self.vbuf.set(render_pass);
@@ -309,18 +348,9 @@ impl TextRenderer {
 
         let mut num = 0;
         for instance in instances.iter() {
-            let bind_group_layout = font_manager.bind_group_layout.clone();
-            let sampler = font_manager.sampler.clone();
             if let Some(font) = font_manager.get_font(instance.font_id) {
                 for character in instance.text.chars() {
-                    if let Some(texture) = font.get_texture(
-                        device,
-                        queue,
-                        &bind_group_layout,
-                        &sampler,
-                        character,
-                        instance.size,
-                    ) {
+                    if let Some(texture) = font.get_texture(character, instance.size) {
                         render_pass.set_bind_group(1, &texture.bind_group, &[]);
                         render_pass.draw_indexed(
                             0..self.vbuf.index_count,
