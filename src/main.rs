@@ -1,4 +1,4 @@
-use guiug::{Anchor, Guiug, Position, Size, Vec4};
+use guiug::{Anchor, Guiug, Position, Size, TextAnchor, Vec4};
 
 fn main() {
     let mut guiug = Guiug::default();
@@ -51,8 +51,10 @@ fn main() {
             guiug.text_node(
                 "Hello world!".to_owned(),
                 arial_font,
-                40,
+                Size::Pixel(40),
                 Vec4::new(1.0, 1.0, 1.0, 1.0),
+                TextAnchor::Start(Size::ZERO),
+                TextAnchor::Center(Size::ZERO),
             ),
         ),
         (
@@ -63,8 +65,10 @@ fn main() {
             guiug.text_node(
                 "Bye world!".to_owned(),
                 arial_font,
-                40,
+                Size::Pixel(40),
                 Vec4::new(1.0, 0.0, 1.0, 1.0),
+                TextAnchor::Start(Size::Pixel(20)),
+                TextAnchor::Center(Size::ZERO),
             ),
         ),
         (
@@ -72,12 +76,26 @@ fn main() {
                 Anchor::start(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
                 Anchor::start(Size::ParentHeight(0.6), Size::ScreenWidth(0.2)),
             ),
-            guiug.text_node(
-                "즐거운 하루!!!".to_owned(),
-                malgun_font,
-                60,
-                Vec4::new(0.0, 0.0, 1.0, 1.0),
-            ),
+            {
+                let inner_vec = vec![
+                    (
+                        Position::FULL,
+                        guiug.text_node(
+                            "즐거운 하루!!!".to_owned(),
+                            malgun_font,
+                            Size::ParentHeight(0.15),
+                            Vec4::new(0.0, 0.0, 0.0, 1.0),
+                            TextAnchor::Center(Size::ZERO),
+                            TextAnchor::Center(Size::ZERO),
+                        ),
+                    ),
+                    (
+                        Position::FULL,
+                        guiug.rect_node(Vec4::new(0.0, 1.0, 0.5, 1.0)),
+                    ),
+                ];
+                guiug.layer_node(inner_vec)
+            },
         ),
         (
             Position::new(

@@ -9,7 +9,7 @@ mod types;
 
 pub use glam::Vec4;
 use glam::{IVec2, IVec3, UVec3};
-pub use scene::{Anchor, Node, NodeId, Position, Scene, Size};
+pub use scene::{Anchor, Node, NodeId, Position, Scene, Size, TextAnchor};
 use std::sync::Arc;
 use types::Rect;
 
@@ -73,14 +73,18 @@ impl<'a> Guiug<'a> {
         &mut self,
         text: String,
         font_id: font::FontId,
-        size: u16,
+        size: Size,
         color: Vec4,
+        horizontal: scene::TextAnchor,
+        vertical: scene::TextAnchor,
     ) -> NodeId {
         let node = Node::Text {
             text,
             font_id,
             size,
             color,
+            horizontal,
+            vertical,
         };
         self.scene.insert_node(node)
     }
@@ -279,7 +283,11 @@ impl<'a> State<'a> {
                 self.surface_configuration.width as i32,
                 self.surface_configuration.height as i32,
             );
-            let visitor = NodeVisitor::visit(screen_size, &self.scene);
+            let visitor = NodeVisitor::visit(screen_size, &self.scene, &self.font_manager);
+
+            let rect_instances = visitor.rect_instances;
+            let texture_instances = visitor.texture_instances;
+            let text_instances = visitor.text_instances;
 
             // screen uniform
             self.screen_uniform.write(
@@ -293,12 +301,8 @@ impl<'a> State<'a> {
             self.screen_uniform.set(&mut render_pass, 0);
 
             // Flat rendering
-            self.flat_renderer.draw(
-                &mut render_pass,
-                &self.device,
-                &self.queue,
-                visitor.rect_instances,
-            );
+            self.flat_renderer
+                .draw(&mut render_pass, &self.device, &self.queue, rect_instances);
 
             // Texture rendering
             self.texture_renderer.draw(
@@ -306,7 +310,7 @@ impl<'a> State<'a> {
                 &self.device,
                 &self.queue,
                 &self.texture_manager,
-                visitor.texture_instances,
+                texture_instances,
             );
 
             // Text rendering
@@ -315,7 +319,7 @@ impl<'a> State<'a> {
                 &self.device,
                 &self.queue,
                 &mut self.font_manager,
-                visitor.text_instances,
+                text_instances,
             )
         }
 
@@ -337,25 +341,35 @@ impl<'a> State<'a> {
 
         self.depth_texture_view =
             texture::create_depth_texture(&self.device, &self.surface_configuration);
+
+        self.font_manager.clear_cache();
     }
 }
 
-pub(crate) struct NodeVisitor {
+pub(crate) struct NodeVisitor<'a> {
     screen_size: Dimension,
     rect_instances: Vec<renderer::FlatInstance>,
     texture_instances: Vec<renderer::TextureInstance>,
     text_instances: Vec<renderer::TextInstance>,
     z_index: i32,
+
+    font_manager: &'a font::FontManager,
 }
 
-impl NodeVisitor {
-    pub fn visit(screen_size: Dimension, scene: &Scene) -> Self {
+impl<'a> NodeVisitor<'a> {
+    pub fn visit(
+        screen_size: Dimension,
+        scene: &Scene,
+        font_manager: &'a font::FontManager,
+    ) -> Self {
         let mut visitor = Self {
             screen_size,
             rect_instances: Vec::new(),
             texture_instances: Vec::new(),
             text_instances: Vec::new(),
             z_index: 0,
+
+            font_manager,
         };
         if let Some(root_node) = scene.root_node {
             let screen_rect = Rect::new(0, 0, screen_size.width, screen_size.height);
@@ -436,13 +450,30 @@ impl NodeVisitor {
                     font_id,
                     size,
                     color,
-                } => self.text_instances.push(renderer::TextInstance {
-                    text: text.clone(),
-                    position: IVec3::new(rect.x, rect.y, self.z_index),
-                    size: *size,
-                    font_id: *font_id,
-                    color: *color,
-                }),
+                    horizontal,
+                    vertical,
+                } => {
+                    let size = size.resolve(rect.dimension(), self.screen_size) as u16;
+                    let font = self.font_manager.get_font(*font_id).expect("no such font");
+                    let node_width = font.measure_width(text, size);
+
+                    let x = horizontal.apply(
+                        node_width,
+                        rect.x,
+                        rect.w,
+                        rect.dimension(),
+                        self.screen_size,
+                    );
+                    let y = vertical.apply(0, rect.y, rect.h, rect.dimension(), self.screen_size);
+
+                    self.text_instances.push(renderer::TextInstance {
+                        text: text.clone(),
+                        position: IVec3::new(x, y, self.z_index),
+                        size,
+                        font_id: *font_id,
+                        color: *color,
+                    })
+                }
                 Node::Empty => (),
             }
         }

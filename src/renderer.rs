@@ -305,7 +305,7 @@ impl TextRenderer {
         let bind_group_layout = font_manager.bind_group_layout.clone();
         let sampler = font_manager.sampler.clone();
         for instance in instances.iter() {
-            if let Some(font) = font_manager.get_font(instance.font_id) {
+            if let Some(font) = font_manager.get_font_mut(instance.font_id) {
                 let mut pos = instance.position;
                 for character in instance.text.chars() {
                     let metrics = font.metrics(character, instance.size);
@@ -348,7 +348,7 @@ impl TextRenderer {
 
         let mut num = 0;
         for instance in instances.iter() {
-            if let Some(font) = font_manager.get_font(instance.font_id) {
+            if let Some(font) = font_manager.get_font_mut(instance.font_id) {
                 for character in instance.text.chars() {
                     if let Some(texture) = font.get_texture(character, instance.size) {
                         render_pass.set_bind_group(1, &texture.bind_group, &[]);

@@ -78,8 +78,18 @@ impl FontManager {
         }
     }
 
-    pub(crate) fn get_font(&mut self, font_id: FontId) -> Option<&mut Font> {
+    pub(crate) fn get_font(&self, font_id: FontId) -> Option<&Font> {
+        self.fonts.get(&font_id)
+    }
+
+    pub(crate) fn get_font_mut(&mut self, font_id: FontId) -> Option<&mut Font> {
         self.fonts.get_mut(&font_id)
+    }
+
+    pub(crate) fn clear_cache(&mut self) {
+        self.fonts
+            .iter_mut()
+            .for_each(|(_, font)| font.clear_cache());
     }
 }
 
@@ -127,7 +137,20 @@ impl Font {
         });
     }
 
+    pub fn clear_cache(&mut self) {
+        self.cache.clear();
+    }
+
     pub fn get_texture(&self, character: char, size: u16) -> Option<&crate::texture::Texture> {
         self.cache.get(&(character, size)).and_then(|v| v.as_ref())
+    }
+
+    pub fn measure_width(&self, text: &str, size: u16) -> i32 {
+        let mut res = 0;
+        for character in text.chars() {
+            let metrics = self.inner.metrics(character, size as f32);
+            res += metrics.advance_width as i32;
+        }
+        res
     }
 }

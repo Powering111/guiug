@@ -54,8 +54,12 @@ pub enum Node {
     Text {
         text: String,
         font_id: font::FontId,
-        size: u16,
+        size: Size,
         color: Vec4,
+        // horizontal position
+        horizontal: TextAnchor,
+        // position of baseline
+        vertical: TextAnchor,
     },
     Empty,
 }
@@ -126,8 +130,8 @@ impl Anchor {
         screen_size: Dimension,
     ) -> (i32, i32) {
         match self {
-            Anchor::Start { pos: start, size } => (
-                parent_pos + start.resolve(parent_size, screen_size),
+            Anchor::Start { pos, size } => (
+                parent_pos + pos.resolve(parent_size, screen_size),
                 size.resolve(parent_size, screen_size),
             ),
             Anchor::Center { pos, size } => (
@@ -136,9 +140,9 @@ impl Anchor {
                     + (parent_size_curr - size.resolve(parent_size, screen_size)) / 2,
                 size.resolve(parent_size, screen_size),
             ),
-            Anchor::End { pos: end, size } => (
+            Anchor::End { pos, size } => (
                 parent_pos + parent_size_curr
-                    - end.resolve(parent_size, screen_size)
+                    - pos.resolve(parent_size, screen_size)
                     - size.resolve(parent_size, screen_size),
                 size.resolve(parent_size, screen_size),
             ),
@@ -205,6 +209,39 @@ impl Size {
             Size::ScreenWidth(ratio) => (screen_size.width as f32 * ratio) as i32,
             Size::ScreenHeight(ratio) => (screen_size.height as f32 * ratio) as i32,
             Size::Weight(_) => 0,
+        }
+    }
+}
+
+/// Anchored position used in text node.
+#[derive(Clone, Debug)]
+pub enum TextAnchor {
+    Start(Size),
+    Center(Size),
+    End(Size),
+}
+
+impl TextAnchor {
+    pub(crate) fn apply(
+        &self,
+        node_size_curr: i32,
+        parent_pos: i32,
+        parent_size_curr: i32,
+        parent_size: Dimension,
+        screen_size: Dimension,
+    ) -> i32 {
+        match self {
+            TextAnchor::Start(pos) => parent_pos + pos.resolve(parent_size, screen_size),
+            TextAnchor::Center(pos) => {
+                parent_pos
+                    + pos.resolve(parent_size, screen_size)
+                    + (parent_size_curr - node_size_curr) / 2
+            }
+            TextAnchor::End(pos) => {
+                parent_pos + parent_size_curr
+                    - pos.resolve(parent_size, screen_size)
+                    - node_size_curr
+            }
         }
     }
 }
