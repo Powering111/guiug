@@ -2,6 +2,7 @@
 //! Create [Guiug] object and call [run] with it.
 
 mod font;
+mod interaction;
 mod renderer;
 mod scene;
 mod texture;
@@ -9,9 +10,15 @@ mod types;
 
 pub use glam::Vec4;
 use glam::{IVec2, IVec3, UVec3};
+pub use interaction::Event;
 pub use scene::{Anchor, Node, NodeId, Position, Scene, Size, TextAnchor};
-use std::sync::Arc;
+use std::{
+    collections::{HashSet, VecDeque},
+    sync::Arc,
+};
 use types::Rect;
+use winit::event::WindowEvent;
+pub use winit::keyboard::{KeyCode, PhysicalKey};
 
 use crate::types::Dimension;
 
@@ -29,6 +36,21 @@ pub struct Guiug<'a> {
     scene: Scene,
     texture_info_manager: texture::TextureInfoManager<'a>,
     font_info_manager: font::FontInfoManager<'a>,
+    interaction: interaction::Interaction<'a>,
+}
+
+impl core::ops::Deref for Guiug<'_> {
+    type Target = Scene;
+
+    fn deref(&self) -> &Self::Target {
+        &self.scene
+    }
+}
+
+impl core::ops::DerefMut for Guiug<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.scene
+    }
 }
 
 impl<'a> Guiug<'a> {
@@ -42,69 +64,9 @@ impl<'a> Guiug<'a> {
         self.font_info_manager.add_font_info(font_data)
     }
 
-    /// Set scene root. You have to set root in order to render anything on the screen. Root node will have same size as the screen.
-    pub fn set_root(&mut self, root_node: NodeId) {
-        self.scene.root_node = Some(root_node);
-    }
-
-    /// Create Layer node.
-    /// First one will be visible when overlapped.
-    pub fn layer_node(&mut self, inner: Vec<(Position, NodeId)>) -> NodeId {
-        let node = Node::Layer { inner };
-        self.scene.insert_node(node)
-    }
-
-    /// Create Rect node. It renders as solid rectangle. Color is RGBA0~1 Vec4.
-    pub fn rect_node(&mut self, color: Vec4) -> NodeId {
-        let node = Node::Rect { color };
-        self.scene.insert_node(node)
-    }
-
-    /// Create texture node. It renders as rectangular image.
-    /// To create texture, use [Self::add_texture]
-    pub fn texture_node(&mut self, texture_id: texture::TextureId) -> NodeId {
-        let node = Node::Texture { texture_id };
-        self.scene.insert_node(node)
-    }
-
-    /// Create text node. Its position will be the leftmost point of the baseline.
-    /// To create font, use [Self::add_font]
-    pub fn text_node(
-        &mut self,
-        text: String,
-        font_id: font::FontId,
-        size: Size,
-        color: Vec4,
-        horizontal: scene::TextAnchor,
-        vertical: scene::TextAnchor,
-    ) -> NodeId {
-        let node = Node::Text {
-            text,
-            font_id,
-            size,
-            color,
-            horizontal,
-            vertical,
-        };
-        self.scene.insert_node(node)
-    }
-
-    /// Create row node.
-    pub fn row_node(&mut self, inner: Vec<(Size, NodeId)>) -> NodeId {
-        let node = Node::Row { inner };
-        self.scene.insert_node(node)
-    }
-
-    /// Create column node.
-    pub fn column_node(&mut self, inner: Vec<(Size, NodeId)>) -> NodeId {
-        let node = Node::Column { inner };
-        self.scene.insert_node(node)
-    }
-
-    /// Create empty node. It can be used for space between row or column elements.
-    pub fn empty_node(&mut self) -> NodeId {
-        let node = Node::Empty;
-        self.scene.insert_node(node)
+    /// Add interaction. It attaches event handler to the given event.
+    pub fn interaction(&mut self, event: Event, handler: impl FnMut(&mut Runtime) + 'a) {
+        self.interaction.insert_handler(event, handler);
     }
 }
 
@@ -112,17 +74,20 @@ impl<'a> Guiug<'a> {
 /// This function will not return until the window closes.
 /// * `title` - window title
 /// * `guiug` - guiug application to run
-pub fn run(title: &str, guiug: Guiug) {
+pub fn run(title: &str, mut guiug: Guiug) {
     let event_loop = winit::event_loop::EventLoop::new().unwrap();
-    let mut app = Handler {
-        state: None,
+    let interaction = core::mem::take(&mut guiug.interaction);
+    let mut app = WindowHandler {
+        runtime: None,
         guiug: Some(guiug),
         title,
+        pressed_keys: HashSet::new(),
+        interaction,
     };
     event_loop.run_app(&mut app).unwrap();
 }
 
-struct State<'a> {
+pub struct Runtime<'a> {
     // scene
     scene: Scene,
 
@@ -143,9 +108,12 @@ struct State<'a> {
 
     texture_manager: texture::TextureManager,
     font_manager: font::FontManager,
+
+    // interactions
+    events: VecDeque<Event>,
 }
 
-impl<'a> State<'a> {
+impl<'a> Runtime<'a> {
     async fn new(window: Arc<winit::window::Window>, guiug: Guiug<'a>) -> Self {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
@@ -237,6 +205,8 @@ impl<'a> State<'a> {
             texture_manager,
             font_manager,
             depth_texture_view,
+
+            events: VecDeque::new(),
         }
     }
 
@@ -343,6 +313,25 @@ impl<'a> State<'a> {
             texture::create_depth_texture(&self.device, &self.surface_configuration);
 
         self.font_manager.clear_cache();
+    }
+
+    fn record_event(&mut self, event: Event) {
+        self.events.push_back(event);
+        self.window.request_redraw();
+    }
+}
+
+impl core::ops::Deref for Runtime<'_> {
+    type Target = Scene;
+
+    fn deref(&self) -> &Self::Target {
+        &self.scene
+    }
+}
+
+impl core::ops::DerefMut for Runtime<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.scene
     }
 }
 
@@ -480,13 +469,15 @@ impl<'a> NodeVisitor<'a> {
     }
 }
 
-struct Handler<'a> {
-    state: Option<State<'a>>,
+struct WindowHandler<'a> {
+    runtime: Option<Runtime<'a>>,
     guiug: Option<Guiug<'a>>,
     title: &'a str,
+    pressed_keys: HashSet<PhysicalKey>,
+    interaction: interaction::Interaction<'a>,
 }
 
-impl<'a> winit::application::ApplicationHandler for Handler<'a> {
+impl<'a> winit::application::ApplicationHandler for WindowHandler<'a> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window = event_loop
             .create_window(
@@ -497,7 +488,7 @@ impl<'a> winit::application::ApplicationHandler for Handler<'a> {
             )
             .unwrap();
         let window = Arc::new(window);
-        self.state = Some(pollster::block_on(State::new(
+        self.runtime = Some(pollster::block_on(Runtime::new(
             window.clone(),
             self.guiug.take().unwrap(),
         )));
@@ -509,27 +500,64 @@ impl<'a> winit::application::ApplicationHandler for Handler<'a> {
         &mut self,
         event_loop: &winit::event_loop::ActiveEventLoop,
         _window_id: winit::window::WindowId,
-        event: winit::event::WindowEvent,
+        event: WindowEvent,
     ) {
-        let state = match &mut self.state {
+        let runtime = match &mut self.runtime {
             Some(state) => state,
             None => return,
         };
 
         match event {
-            winit::event::WindowEvent::CloseRequested => event_loop.exit(),
-            winit::event::WindowEvent::RedrawRequested => {
-                state.update();
+            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::RedrawRequested => {
+                runtime.update();
+                let events = runtime.events.clone();
+                for event in events.iter() {
+                    let handlers = self.interaction.get_handlers(*event);
+                    for handler in handlers.iter_mut() {
+                        handler(runtime);
+                    }
+                }
+                runtime.events.clear();
+
                 if let Err(wgpu::SurfaceError::Lost) | Err(wgpu::SurfaceError::Outdated) =
-                    state.render()
+                    runtime.render()
                 {
-                    let size = state.window.inner_size();
-                    state.resize(size.width, size.height);
+                    let size = runtime.window.inner_size();
+                    runtime.resize(size.width, size.height);
                 }
             }
-            winit::event::WindowEvent::Resized(winit::dpi::PhysicalSize { width, height }) => {
-                state.resize(width, height);
+            WindowEvent::Resized(winit::dpi::PhysicalSize { width, height }) => {
+                runtime.resize(width, height);
             }
+            WindowEvent::Focused(false) => {
+                // lost focus
+                for pressed_key in self.pressed_keys.iter() {
+                    runtime.record_event(Event::KeyUp(*pressed_key));
+                }
+                self.pressed_keys.clear();
+            }
+            WindowEvent::KeyboardInput { event, .. } => match event {
+                winit::event::KeyEvent {
+                    physical_key,
+                    state: winit::event::ElementState::Pressed,
+                    repeat: false,
+                    ..
+                } => {
+                    self.pressed_keys.insert(physical_key);
+                    runtime.record_event(Event::KeyDown(physical_key));
+                }
+                winit::event::KeyEvent {
+                    physical_key,
+                    state: winit::event::ElementState::Released,
+                    repeat: false,
+                    ..
+                } => {
+                    self.pressed_keys.remove(&physical_key);
+                    runtime.record_event(Event::KeyUp(physical_key));
+                }
+                _ => (),
+            },
             _ => (),
         }
     }

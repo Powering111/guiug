@@ -1,6 +1,10 @@
-use guiug::{Anchor, Guiug, Position, Size, TextAnchor, Vec4};
+use std::sync::{Arc, Mutex};
+
+use guiug::{Anchor, Event, Guiug, KeyCode, PhysicalKey, Position, Size, TextAnchor, Vec4};
 
 fn main() {
+    let counter_num = Arc::new(Mutex::new(0i64));
+
     let mut guiug = Guiug::default();
 
     // texture info
@@ -35,6 +39,24 @@ fn main() {
         }
     }
 
+    let happy_day_node = guiug.text_node(
+        "즐거운 하루!!!".to_owned(),
+        malgun_font,
+        Size::ParentHeight(0.15),
+        Vec4::new(0.0, 0.0, 0.0, 1.0),
+        TextAnchor::Center(Size::ZERO),
+        TextAnchor::Center(Size::ZERO),
+    );
+
+    let counter_node = guiug.text_node(
+        "Counter: 0".to_owned(),
+        arial_font,
+        Size::Pixel(40),
+        Vec4::new(1.0, 0.2, 0.2, 1.0),
+        TextAnchor::End(Size::ZERO),
+        TextAnchor::End(Size::Pixel(10)),
+    );
+
     root.extend([
         (
             Position::new(
@@ -42,6 +64,13 @@ fn main() {
                 Anchor::start(Size::ZERO, Size::Pixel(400)),
             ),
             guiug.rect_node(Vec4::new(1.0, 1.0, 1.0, 1.0)),
+        ),
+        (
+            Position::new(
+                Anchor::end(Size::ZERO, Size::Pixel(100)),
+                Anchor::end(Size::ZERO, Size::Pixel(100)),
+            ),
+            counter_node,
         ),
         (
             Position::new(
@@ -78,17 +107,7 @@ fn main() {
             ),
             {
                 let inner_vec = vec![
-                    (
-                        Position::FULL,
-                        guiug.text_node(
-                            "즐거운 하루!!!".to_owned(),
-                            malgun_font,
-                            Size::ParentHeight(0.15),
-                            Vec4::new(0.0, 0.0, 0.0, 1.0),
-                            TextAnchor::Center(Size::ZERO),
-                            TextAnchor::Center(Size::ZERO),
-                        ),
-                    ),
+                    (Position::FULL, happy_day_node),
                     (
                         Position::FULL,
                         guiug.rect_node(Vec4::new(0.0, 1.0, 0.5, 1.0)),
@@ -197,6 +216,49 @@ fn main() {
 
     let root_node = guiug.layer_node(root);
     guiug.set_root(root_node);
+
+    // Interaction for changing happiness
+    let mut is_happy = true;
+    guiug.interaction(
+        Event::KeyDown(PhysicalKey::Code(KeyCode::Space)),
+        |runtime| {
+            let node = runtime.get_node_mut(&happy_day_node).unwrap();
+            if let guiug::Node::Text { text, size, .. } = node {
+                is_happy = !is_happy;
+                if is_happy {
+                    *text = "즐거운 하루!!!".to_owned();
+                    *size = Size::ParentHeight(0.15);
+                } else {
+                    *text = "즐겁지 않은 하루...".to_owned();
+                    *size = Size::ParentHeight(0.12);
+                }
+            }
+        },
+    );
+
+    // Interaction for updating counter
+    let update_counter = |runtime: &mut guiug::Runtime, count: i64| {
+        let node = runtime.get_node_mut(&counter_node).unwrap();
+        let mut counter_num = counter_num.lock().unwrap();
+
+        *counter_num += count;
+        if let guiug::Node::Text { text, .. } = node {
+            *text = format!("Counter: {}", counter_num);
+        }
+    };
+    guiug.interaction(
+        Event::KeyDown(PhysicalKey::Code(KeyCode::ArrowUp)),
+        |runtime| {
+            update_counter(runtime, 1);
+        },
+    );
+
+    guiug.interaction(
+        Event::KeyDown(PhysicalKey::Code(KeyCode::ArrowDown)),
+        |runtime| {
+            update_counter(runtime, -1);
+        },
+    );
 
     // run scene
     guiug::run("wonderful program", guiug);

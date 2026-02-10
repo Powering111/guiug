@@ -8,8 +8,7 @@ use glam::Vec4;
 
 pub type NodeId = u32;
 
-/// You have to call `set_root` the root node
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct Scene {
     last_id: NodeId,
     pub(crate) nodes: HashMap<NodeId, Node>,
@@ -17,7 +16,7 @@ pub struct Scene {
 }
 
 impl Scene {
-    // Allocate new NodeId and associate the given node to it. Created NodeId will be returned.
+    /// Allocate new NodeId and associate the given node to it. Created NodeId will be returned.
     pub(crate) fn insert_node(&mut self, node: Node) -> NodeId {
         let id = self.last_id;
         self.last_id += 1;
@@ -25,8 +24,78 @@ impl Scene {
         id
     }
 
-    pub(crate) fn get_node(&self, id: &NodeId) -> Option<&Node> {
+    /// Get node with given node id.
+    pub fn get_node(&self, id: &NodeId) -> Option<&Node> {
         self.nodes.get(id)
+    }
+
+    pub fn get_node_mut(&mut self, id: &NodeId) -> Option<&mut Node> {
+        self.nodes.get_mut(id)
+    }
+
+    /// Set scene root. You have to set root in order to render anything on the screen. Root node will have same size as the screen.
+    pub fn set_root(&mut self, root_node: NodeId) {
+        self.root_node = Some(root_node);
+    }
+
+    /// Create Layer node.
+    /// First one will be visible when overlapped.
+    pub fn layer_node(&mut self, inner: Vec<(Position, NodeId)>) -> NodeId {
+        let node = Node::Layer { inner };
+        self.insert_node(node)
+    }
+
+    /// Create Rect node. It renders as solid rectangle. Color is RGBA0~1 Vec4.
+    pub fn rect_node(&mut self, color: Vec4) -> NodeId {
+        let node = Node::Rect { color };
+        self.insert_node(node)
+    }
+
+    /// Create texture node. It renders as rectangular image.
+    /// To create texture, use [crate::Guiug::add_texture]
+    pub fn texture_node(&mut self, texture_id: texture::TextureId) -> NodeId {
+        let node = Node::Texture { texture_id };
+        self.insert_node(node)
+    }
+
+    /// Create text node. Its position will be the leftmost point of the baseline.
+    /// To create font, use [crate::Guiug::add_font]
+    pub fn text_node(
+        &mut self,
+        text: String,
+        font_id: font::FontId,
+        size: Size,
+        color: Vec4,
+        horizontal: TextAnchor,
+        vertical: TextAnchor,
+    ) -> NodeId {
+        let node = Node::Text {
+            text,
+            font_id,
+            size,
+            color,
+            horizontal,
+            vertical,
+        };
+        self.insert_node(node)
+    }
+
+    /// Create row node.
+    pub fn row_node(&mut self, inner: Vec<(Size, NodeId)>) -> NodeId {
+        let node = Node::Row { inner };
+        self.insert_node(node)
+    }
+
+    /// Create column node.
+    pub fn column_node(&mut self, inner: Vec<(Size, NodeId)>) -> NodeId {
+        let node = Node::Column { inner };
+        self.insert_node(node)
+    }
+
+    /// Create empty node. It can be used for space between row or column elements.
+    pub fn empty_node(&mut self) -> NodeId {
+        let node = Node::Empty;
+        self.insert_node(node)
     }
 }
 
