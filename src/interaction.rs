@@ -9,6 +9,9 @@ pub enum Event {
 
     /// Keyboard key is just released.
     KeyUp(PhysicalKey),
+
+    /// Hitbox node is clicked.
+    Click(crate::NodeId),
 }
 
 type EventHandler<'a> = dyn FnMut(&mut crate::Runtime) + 'a;

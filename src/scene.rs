@@ -39,10 +39,16 @@ impl Scene {
     }
 
     /// Create Layer node.
-    /// First one will be visible when overlapped.
+    /// Last one will be visible when overlapped.
     pub fn layer_node(&mut self, inner: Vec<(Position, NodeId)>) -> NodeId {
         let node = Node::Layer { inner };
         self.insert_node(node)
+    }
+
+    /// Create Hitbox node.
+    /// Hitbox will capture mouse click and record [crate::Event::Click] event.
+    pub fn hitbox_node(&mut self) -> NodeId {
+        self.insert_node(Node::Hitbox)
     }
 
     /// Create Rect node. It renders as solid rectangle. Color is RGBA0~1 Vec4.
@@ -112,6 +118,9 @@ pub enum Node {
     Column {
         inner: Vec<(Size, NodeId)>,
     },
+
+    // Interaction nodes
+    Hitbox,
 
     // Display nodes
     Rect {

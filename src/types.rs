@@ -17,6 +17,13 @@ impl Rect {
             height: self.h,
         }
     }
+
+    pub fn contains(&self, point: glam::IVec2) -> bool {
+        self.x <= point.x
+            && point.x < self.x + self.w
+            && self.y <= point.y
+            && point.y < self.y + self.h
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

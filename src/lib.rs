@@ -82,6 +82,7 @@ pub fn run(title: &str, mut guiug: Guiug) {
         guiug: Some(guiug),
         title,
         pressed_keys: HashSet::new(),
+        cursor_position: Default::default(),
         interaction,
     };
     event_loop.run_app(&mut app).unwrap();
@@ -90,6 +91,7 @@ pub fn run(title: &str, mut guiug: Guiug) {
 pub struct Runtime<'a> {
     // scene
     scene: Scene,
+    visitor: Option<NodeVisitor>,
 
     // winit-related
     window: Arc<winit::window::Window>,
@@ -111,6 +113,7 @@ pub struct Runtime<'a> {
 
     // interactions
     events: VecDeque<Event>,
+    should_exit: bool,
 }
 
 impl<'a> Runtime<'a> {
@@ -191,6 +194,7 @@ impl<'a> Runtime<'a> {
 
         Self {
             scene: guiug.scene,
+            visitor: None,
 
             window,
             surface,
@@ -207,10 +211,20 @@ impl<'a> Runtime<'a> {
             depth_texture_view,
 
             events: VecDeque::new(),
+            should_exit: false,
         }
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self) {
+        self.visitor = Some(NodeVisitor::visit(
+            Dimension::new(
+                self.surface_configuration.width as i32,
+                self.surface_configuration.height as i32,
+            ),
+            &self.scene,
+            &self.font_manager,
+        ));
+    }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
@@ -253,11 +267,11 @@ impl<'a> Runtime<'a> {
                 self.surface_configuration.width as i32,
                 self.surface_configuration.height as i32,
             );
-            let visitor = NodeVisitor::visit(screen_size, &self.scene, &self.font_manager);
 
-            let rect_instances = visitor.rect_instances;
-            let texture_instances = visitor.texture_instances;
-            let text_instances = visitor.text_instances;
+            let visitor = self.visitor.as_ref().unwrap();
+            let rect_instances = &visitor.rect_instances;
+            let texture_instances = &visitor.texture_instances;
+            let text_instances = &visitor.text_instances;
 
             // screen uniform
             self.screen_uniform.write(
@@ -319,6 +333,20 @@ impl<'a> Runtime<'a> {
         self.events.push_back(event);
         self.window.request_redraw();
     }
+
+    fn handle_click(&mut self, position: glam::IVec2) {
+        let hitboxes = &self.visitor.as_ref().unwrap().hitboxes;
+        for (node_id, hitbox) in hitboxes.iter() {
+            if hitbox.contains(position) {
+                self.record_event(Event::Click(*node_id));
+                break;
+            }
+        }
+    }
+
+    pub fn exit(&mut self) {
+        self.should_exit = true;
+    }
 }
 
 impl core::ops::Deref for Runtime<'_> {
@@ -335,46 +363,46 @@ impl core::ops::DerefMut for Runtime<'_> {
     }
 }
 
-pub(crate) struct NodeVisitor<'a> {
+pub(crate) struct NodeVisitor {
     screen_size: Dimension,
     rect_instances: Vec<renderer::FlatInstance>,
     texture_instances: Vec<renderer::TextureInstance>,
     text_instances: Vec<renderer::TextInstance>,
+    hitboxes: Vec<(NodeId, Rect)>,
     z_index: i32,
-
-    font_manager: &'a font::FontManager,
 }
 
-impl<'a> NodeVisitor<'a> {
-    pub fn visit(
-        screen_size: Dimension,
-        scene: &Scene,
-        font_manager: &'a font::FontManager,
-    ) -> Self {
+impl NodeVisitor {
+    pub fn visit(screen_size: Dimension, scene: &Scene, font_manager: &font::FontManager) -> Self {
         let mut visitor = Self {
             screen_size,
             rect_instances: Vec::new(),
             texture_instances: Vec::new(),
             text_instances: Vec::new(),
+            hitboxes: Vec::new(),
             z_index: 0,
-
-            font_manager,
         };
         if let Some(root_node) = scene.root_node {
             let screen_rect = Rect::new(0, 0, screen_size.width, screen_size.height);
 
-            visitor.do_visit(scene, root_node, screen_rect);
+            visitor.do_visit(scene, root_node, screen_rect, font_manager);
         }
         visitor
     }
 
-    pub fn do_visit(&mut self, scene: &Scene, node_id: NodeId, rect: Rect) {
+    pub fn do_visit(
+        &mut self,
+        scene: &Scene,
+        node_id: NodeId,
+        rect: Rect,
+        font_manager: &font::FontManager,
+    ) {
         if let Some(node) = scene.get_node(&node_id) {
             match node {
                 Node::Layer { inner } => {
-                    for (position, child_node_id) in inner {
+                    for (position, child_node_id) in inner.iter().rev() {
                         let child_rect = position.apply(rect, self.screen_size);
-                        self.do_visit(scene, *child_node_id, child_rect);
+                        self.do_visit(scene, *child_node_id, child_rect, font_manager);
                         self.z_index += 1;
                     }
                 }
@@ -396,7 +424,12 @@ impl<'a> NodeVisitor<'a> {
                             size.resolve(rect.dimension(), self.screen_size)
                         }
                         .max(0);
-                        self.do_visit(scene, *child_node_id, Rect::new(rect.x, pos, rect.w, size));
+                        self.do_visit(
+                            scene,
+                            *child_node_id,
+                            Rect::new(rect.x, pos, rect.w, size),
+                            font_manager,
+                        );
                         pos += size;
                     }
                 }
@@ -418,9 +451,17 @@ impl<'a> NodeVisitor<'a> {
                             size.resolve(rect.dimension(), self.screen_size)
                         }
                         .max(0);
-                        self.do_visit(scene, *child_node_id, Rect::new(pos, rect.y, size, rect.h));
+                        self.do_visit(
+                            scene,
+                            *child_node_id,
+                            Rect::new(pos, rect.y, size, rect.h),
+                            font_manager,
+                        );
                         pos += size;
                     }
+                }
+                Node::Hitbox => {
+                    self.hitboxes.push((node_id, rect));
                 }
                 Node::Rect { color } => self.rect_instances.push(renderer::FlatInstance {
                     position: IVec3::new(rect.x, rect.y, self.z_index),
@@ -443,7 +484,7 @@ impl<'a> NodeVisitor<'a> {
                     vertical,
                 } => {
                     let size = size.resolve(rect.dimension(), self.screen_size) as u16;
-                    let font = self.font_manager.get_font(*font_id).expect("no such font");
+                    let font = font_manager.get_font(*font_id).expect("no such font");
                     let node_width = font.measure_width(text, size);
 
                     let x = horizontal.apply(
@@ -474,6 +515,7 @@ struct WindowHandler<'a> {
     guiug: Option<Guiug<'a>>,
     title: &'a str,
     pressed_keys: HashSet<PhysicalKey>,
+    cursor_position: winit::dpi::PhysicalPosition<f64>,
     interaction: interaction::Interaction<'a>,
 }
 
@@ -510,7 +552,6 @@ impl<'a> winit::application::ApplicationHandler for WindowHandler<'a> {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::RedrawRequested => {
-                runtime.update();
                 let events = runtime.events.clone();
                 for event in events.iter() {
                     let handlers = self.interaction.get_handlers(*event);
@@ -519,7 +560,12 @@ impl<'a> winit::application::ApplicationHandler for WindowHandler<'a> {
                     }
                 }
                 runtime.events.clear();
+                if runtime.should_exit {
+                    event_loop.exit();
+                    return;
+                }
 
+                runtime.update();
                 if let Err(wgpu::SurfaceError::Lost) | Err(wgpu::SurfaceError::Outdated) =
                     runtime.render()
                 {
@@ -558,6 +604,21 @@ impl<'a> winit::application::ApplicationHandler for WindowHandler<'a> {
                 }
                 _ => (),
             },
+            WindowEvent::MouseInput {
+                state: winit::event::ElementState::Pressed,
+                button: winit::event::MouseButton::Left,
+                ..
+            } => {
+                // left click
+                runtime.handle_click(glam::IVec2::new(
+                    self.cursor_position.x as i32,
+                    self.cursor_position.y as i32,
+                ));
+                runtime.record_event(Event::Click(0));
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor_position = position;
+            }
             _ => (),
         }
     }

@@ -66,13 +66,13 @@ impl FlatRenderer {
         render_pass: &mut wgpu::RenderPass,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        instances: Vec<FlatInstance>,
+        instances: &[FlatInstance],
     ) {
         if instances.is_empty() {
             return;
         }
 
-        let instances_bytes = bytemuck::cast_slice(&instances);
+        let instances_bytes = bytemuck::cast_slice(instances);
         if instances_bytes.len() as u64 > self.instance_buffer.size() {
             self.instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: None,
@@ -159,12 +159,13 @@ impl TextureRenderer {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         texture_manager: &crate::texture::TextureManager,
-        mut instances: Vec<TextureInstance>,
+        instances: &[TextureInstance],
     ) {
         if instances.is_empty() {
             return;
         }
 
+        let mut instances = instances.to_owned();
         instances.sort_by_key(|instance| instance.texture_id);
         let instances_raw: Vec<TextureInstanceRaw> =
             instances.iter().map(|instance| instance.raw()).collect();
@@ -292,12 +293,13 @@ impl TextRenderer {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         font_manager: &mut crate::font::FontManager,
-        mut instances: Vec<TextInstance>,
+        instances: &[TextInstance],
     ) {
         if instances.is_empty() {
             return;
         }
 
+        let mut instances = instances.to_owned();
         instances.sort_by_key(|instance| instance.font_id);
 
         let mut instances_raw = Vec::new();

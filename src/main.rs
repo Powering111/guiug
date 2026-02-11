@@ -21,24 +21,6 @@ fn main() {
     // construct scene
     let mut root = Vec::new();
 
-    for y in 0..100 {
-        for x in 0..100 {
-            let node = guiug.rect_node(Vec4::new(
-                (y % 100) as f32 / 100.0,
-                (x % 100) as f32 / 100.0,
-                0.0,
-                1.0,
-            ));
-            root.push((
-                Position::new(
-                    Anchor::end(Size::Pixel(x * 4), Size::Pixel(3)),
-                    Anchor::start(Size::Pixel(y * 4), Size::Pixel(3)),
-                ),
-                node,
-            ));
-        }
-    }
-
     let happy_day_node = guiug.text_node(
         "즐거운 하루!!!".to_owned(),
         malgun_font,
@@ -58,6 +40,41 @@ fn main() {
     );
 
     root.extend([
+        (
+            Position::new(
+                Anchor::start(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
+                Anchor::end(Size::ParentHeight(0.4), Size::ScreenWidth(0.2)),
+            ),
+            guiug.texture_node(awesomeface_texture),
+        ),
+        (
+            Position::new(
+                Anchor::end(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
+                Anchor::end(Size::ParentHeight(0.4), Size::ScreenWidth(0.2)),
+            ),
+            guiug.texture_node(ldmsys_texture),
+        ),
+        (
+            Position::new(
+                Anchor::start(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
+                Anchor::end(Size::ParentHeight(0.1), Size::ScreenWidth(0.2)),
+            ),
+            guiug.texture_node(demisoda_texture),
+        ),
+        (
+            Position::new(
+                Anchor::end(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
+                Anchor::end(Size::ParentHeight(0.1), Size::ScreenWidth(0.2)),
+            ),
+            guiug.texture_node(library_texture),
+        ),
+        (
+            Position::new(
+                Anchor::stretch(Size::Pixel(100), Size::Pixel(100)),
+                Anchor::start(Size::ParentHeight(0.1), Size::ParentHeight(0.2)),
+            ),
+            guiug.texture_node(gamma_texture),
+        ),
         (
             Position::new(
                 Anchor::end(Size::ZERO, Size::Pixel(400)),
@@ -107,112 +124,89 @@ fn main() {
             ),
             {
                 let inner_vec = vec![
-                    (Position::FULL, happy_day_node),
                     (
                         Position::FULL,
-                        guiug.rect_node(Vec4::new(0.0, 1.0, 0.5, 1.0)),
+                        guiug.rect_node(Vec4::new(0.2, 0.9, 0.5, 1.0)),
                     ),
+                    (Position::FULL, happy_day_node),
                 ];
                 guiug.layer_node(inner_vec)
             },
         ),
-        (
-            Position::new(
-                Anchor::start(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
-                Anchor::end(Size::ParentHeight(0.4), Size::ScreenWidth(0.2)),
-            ),
-            guiug.texture_node(awesomeface_texture),
-        ),
-        (
-            Position::new(
-                Anchor::end(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
-                Anchor::end(Size::ParentHeight(0.4), Size::ScreenWidth(0.2)),
-            ),
-            guiug.texture_node(ldmsys_texture),
-        ),
-        (
-            Position::new(
-                Anchor::start(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
-                Anchor::end(Size::ParentHeight(0.1), Size::ScreenWidth(0.2)),
-            ),
-            guiug.texture_node(demisoda_texture),
-        ),
-        (
-            Position::new(
-                Anchor::end(Size::ParentWidth(0.2), Size::ScreenWidth(0.2)),
-                Anchor::end(Size::ParentHeight(0.1), Size::ScreenWidth(0.2)),
-            ),
-            guiug.texture_node(library_texture),
-        ),
-        (
-            Position::new(
-                Anchor::stretch(Size::Pixel(100), Size::Pixel(100)),
-                Anchor::start(Size::ParentHeight(0.1), Size::ParentHeight(0.2)),
-            ),
-            guiug.texture_node(gamma_texture),
-        ),
     ]);
 
-    // Tile rectangles
-    let mut row_vec = Vec::new();
-    for i in 0..10 {
-        let mut col_vec = Vec::new();
-        for j in 0..10 {
-            let color = Vec4::new(0.1 * i as f32, 0.1 * j as f32, 0.0, 1.0);
-            let rect_node = guiug.rect_node(color);
-            // layer node for margin
-            let layer_node = guiug.layer_node(vec![(
+    // small rectangles
+    for y in 0..100 {
+        for x in 0..100 {
+            let node = guiug.rect_node(Vec4::new(
+                (y % 100) as f32 / 100.0,
+                (x % 100) as f32 / 100.0,
+                0.0,
+                1.0,
+            ));
+            root.push((
                 Position::new(
-                    Anchor::center(Size::ZERO, Size::ParentWidth(0.8)),
-                    Anchor::center(Size::ZERO, Size::ParentHeight(0.8)),
+                    Anchor::end(Size::Pixel(x * 4), Size::Pixel(3)),
+                    Anchor::start(Size::Pixel(y * 4), Size::Pixel(3)),
                 ),
-                rect_node,
-            )]);
-            col_vec.push((Size::Weight(1.0), layer_node));
+                node,
+            ));
         }
-        row_vec.push((Size::Weight(1.0), guiug.column_node(col_vec)));
     }
-    root.push((Position::FULL, guiug.row_node(row_vec)));
 
-    // Row & Column demonstration
-    let col_vec = vec![
+    let button_hitbox = guiug.hitbox_node();
+    let button_node = vec![
         (
-            Size::Weight(1.0),
-            guiug.rect_node(Vec4::new(0.0, 1.0, 1.0, 1.0)),
+            Position::FULL,
+            guiug.rect_node(Vec4::new(0.9, 0.9, 0.9, 1.0)),
         ),
         (
-            Size::Weight(1.0),
-            guiug.rect_node(Vec4::new(1.0, 1.0, 1.0, 1.0)),
+            Position::FULL,
+            guiug.text_node(
+                "Click me!".to_owned(),
+                arial_font,
+                Size::ParentHeight(0.4),
+                Vec4::new(0.0, 0.0, 0.0, 1.0),
+                TextAnchor::Center(Size::ZERO),
+                TextAnchor::Center(Size::ParentHeight(0.1)),
+            ),
+        ),
+        (Position::FULL, button_hitbox),
+    ];
+    let button_hitbox2 = guiug.hitbox_node();
+    let button_node2 = vec![
+        (
+            Position::FULL,
+            guiug.rect_node(Vec4::new(0.9, 0.9, 0.9, 1.0)),
         ),
         (
-            Size::Weight(1.0),
-            guiug.rect_node(Vec4::new(0.0, 1.0, 1.0, 1.0)),
+            Position::FULL,
+            guiug.text_node(
+                "Click me! 2".to_owned(),
+                arial_font,
+                Size::ParentHeight(0.4),
+                Vec4::new(0.0, 0.0, 0.0, 1.0),
+                TextAnchor::Center(Size::ZERO),
+                TextAnchor::Center(Size::ParentHeight(0.1)),
+            ),
         ),
-        (Size::Weight(2.0), guiug.empty_node()),
-        (
-            Size::Weight(1.0),
-            guiug.rect_node(Vec4::new(0.0, 1.0, 1.0, 1.0)),
-        ),
+        (Position::FULL, button_hitbox2),
     ];
 
-    let row_vec = vec![
-        (
-            Size::Pixel(100),
-            guiug.rect_node(Vec4::new(1.0, 0.0, 0.0, 1.0)),
+    root.push((
+        Position::new(
+            Anchor::start(Size::Pixel(300), Size::Pixel(200)),
+            Anchor::center(Size::ZERO, Size::Pixel(100)),
         ),
-        (Size::Weight(1.0), guiug.column_node(col_vec.clone())),
-        (
-            Size::Weight(1.0),
-            guiug.rect_node(Vec4::new(0.0, 0.0, 1.0, 1.0)),
+        guiug.layer_node(button_node2),
+    ));
+    root.push((
+        Position::new(
+            Anchor::start(Size::Pixel(200), Size::Pixel(200)),
+            Anchor::center(Size::Pixel(50), Size::Pixel(100)),
         ),
-        (Size::Weight(2.0), guiug.empty_node()),
-        (
-            Size::Weight(1.0),
-            guiug.rect_node(Vec4::new(0.0, 0.0, 1.0, 1.0)),
-        ),
-    ];
-
-    root.push((Position::FULL, guiug.row_node(row_vec)));
+        guiug.layer_node(button_node),
+    ));
 
     let root_node = guiug.layer_node(root);
     guiug.set_root(root_node);
@@ -257,6 +251,22 @@ fn main() {
         Event::KeyDown(PhysicalKey::Code(KeyCode::ArrowDown)),
         |runtime| {
             update_counter(runtime, -1);
+        },
+    );
+
+    // Interaction for button
+    guiug.interaction(Event::Click(button_hitbox), |runtime| {
+        update_counter(runtime, 100);
+    });
+    guiug.interaction(Event::Click(button_hitbox2), |runtime| {
+        update_counter(runtime, -100);
+    });
+
+    // Exit on esc
+    guiug.interaction(
+        Event::KeyDown(PhysicalKey::Code(KeyCode::Escape)),
+        |runtime| {
+            runtime.exit();
         },
     );
 
